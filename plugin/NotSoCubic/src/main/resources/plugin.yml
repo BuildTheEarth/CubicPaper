@@ -1,0 +1,4 @@
+name: NotSoCubic
+version: '${version}'
+main: net.buildtheearth.cubicpaper.notsocubic.NotSoCubic
+api-version: '1.20'

@@ -66,12 +66,13 @@ paperweight {
 
         }
         // Frankly no clue what the below thing does but I don't really need it
-        //patchTasks.register("generatedApi") {
-        //    isBareDirectory = true
-        //    upstreamDirPath = "paper-api-generator/generated"
-        //    patchDir = layout.projectDirectory.dir("patches/generatedApi")
-        //    outputDir = layout.projectDirectory.dir("paper-api-generator/generated")
-        //}
+        //Update: I take that back 🤡
+        patchTasks.register("generatedApi") {
+            isBareDirectory = true
+            upstreamDirPath = "paper-api-generator/generated"
+            patchDir = layout.projectDirectory.dir("patches/generatedApi")
+            outputDir = layout.projectDirectory.dir("paper-api-generator/generated")
+        }
     }
 }
 
