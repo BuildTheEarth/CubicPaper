@@ -1,0 +1,398 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Sushrut Pola <sushrut.pola@gmail.com>
+Date: Mon, 29 Jul 2024 18:40:57 -0700
+Subject: [PATCH] Part 1 of Changes
+
+
+diff --git a/build.gradle.kts b/build.gradle.kts
+index 7126e599e57da2280279ea9b0aad7c46df9db0f8..c216457bbe5066859d6ef26e58ab9f447bbf494f 100644
+--- a/build.gradle.kts
++++ b/build.gradle.kts
+@@ -61,6 +61,8 @@ dependencies {
+     implementation("io.papermc:reflection-rewriter-runtime:$reflectionRewriterVersion")
+     implementation("io.papermc:reflection-rewriter-proxy-generator:$reflectionRewriterVersion")
+     // Paper end - Remap reflection
++
++    implementation("org.rocksdb:rocksdbjni:6.6.4") // CubicPaper rocksdb JNI bindings
+ }
+ 
+ paperweight {
+diff --git a/src/main/java/io/papermc/paper/chunk/system/io/RegionFileIOThread.java b/src/main/java/io/papermc/paper/chunk/system/io/RegionFileIOThread.java
+index 2096e57c025858519e7c46788993b9aac1ec60e8..bfe6ee2bfda452d84801329147840ad306b253ee 100644
+--- a/src/main/java/io/papermc/paper/chunk/system/io/RegionFileIOThread.java
++++ b/src/main/java/io/papermc/paper/chunk/system/io/RegionFileIOThread.java
+@@ -812,6 +812,7 @@ public final class RegionFileIOThread extends PrioritisedQueueExecutorThread {
+         return thread.loadDataAsyncInternal(world, chunkX, chunkZ, type, onComplete, intendingToBlock, priority);
+     }
+ 
++    //TODO: Mess with this
+     Cancellable loadDataAsyncInternal(final ServerLevel world, final int chunkX, final int chunkZ,
+                                       final RegionFileType type, final BiConsumer<CompoundTag, Throwable> onComplete,
+                                       final boolean intendingToBlock, final PrioritisedExecutor.Priority priority) {
+diff --git a/src/main/java/net/buildtheearth/cubicpaper/CubeOverlapLevelManager.java b/src/main/java/net/buildtheearth/cubicpaper/CubeOverlapLevelManager.java
+new file mode 100644
+index 0000000000000000000000000000000000000000..00d6d7eb7076babd188ffc016a7ef7d01ef555ab
+--- /dev/null
++++ b/src/main/java/net/buildtheearth/cubicpaper/CubeOverlapLevelManager.java
+@@ -0,0 +1,41 @@
++package net.buildtheearth.cubicpaper;
++
++import net.minecraft.world.level.chunk.LevelChunkSection;
++
++import java.util.concurrent.ConcurrentHashMap;
++
++import static net.minecraft.world.level.ChunkPos.asLong;
++
++public class CubeOverlapLevelManager {
++    //use asLong to get the key to the first hashamp, and then the key to the embedded hashmap should just be the chunk section index, may change to an array later
++    //The idea is we store already loaded chunk sections here for their lifecycle so we can avoid weird access modification issues when multiple people edit a chunk at the same time
++    //This is a temporary solution until we can figure out a better way to handle chunk section access
++    private  ConcurrentHashMap<Long, ConcurrentHashMap<Integer, LevelChunkSectionHolder>> cubeOverlapMap = new ConcurrentHashMap<>();
++
++    String storeWorld;
++
++    public CubeOverlapLevelManager(String storeWorld) {
++        this.storeWorld = storeWorld;
++    }
++
++
++    public boolean isChunkLoaded(int x, int z) {
++        return cubeOverlapMap.containsKey(asLong(x, z));
++    }
++
++    public boolean isChunkSectionLoaded(int x, int z, int sectionIndex) {
++        return isChunkLoaded(x, z) && cubeOverlapMap.get(asLong(x, z)).containsKey(sectionIndex);
++    }
++
++    public LevelChunkSection getChunkSectionIfLoaded(int x, int z, int sectionIndex, String worldName) {
++        return isChunkSectionLoaded(x, z, sectionIndex) ? cubeOverlapMap.get(asLong(x, z)).get(sectionIndex).getSection(worldName) : null;
++    }
++
++    //This just gives up the section for the specific world, if it's the last world to give up the section, it will be removed from the map
++    public void discardChunkSection(int x, int z, int sectionIndex, String worldName) {
++        if (isChunkSectionLoaded(x, z, sectionIndex)) {
++            cubeOverlapMap.get(asLong(x, z)).get(sectionIndex).giveUpSection(worldName);
++        }
++    }
++
++}
+diff --git a/src/main/java/net/buildtheearth/cubicpaper/CubeOverlapManager.java b/src/main/java/net/buildtheearth/cubicpaper/CubeOverlapManager.java
+new file mode 100644
+index 0000000000000000000000000000000000000000..8c37e1a2ef782dd633831d825db1ed47f74f71d7
+--- /dev/null
++++ b/src/main/java/net/buildtheearth/cubicpaper/CubeOverlapManager.java
+@@ -0,0 +1,16 @@
++package net.buildtheearth.cubicpaper;
++
++import java.util.HashMap;
++
++public class CubeOverlapManager {
++    //mapping true world name to cube overlap level manager
++    private static HashMap<String, CubeOverlapLevelManager> store = new HashMap<>();
++
++    public static CubeOverlapLevelManager get(String worldName) {
++        return store.get(worldName);
++    }
++
++    public static void put(String worldName, CubeOverlapLevelManager manager) {
++        store.put(worldName, manager);
++    }
++}
+diff --git a/src/main/java/net/buildtheearth/cubicpaper/CubicStoreList.java b/src/main/java/net/buildtheearth/cubicpaper/CubicStoreList.java
+new file mode 100644
+index 0000000000000000000000000000000000000000..dfd6fefa133aeca14222e18ff1916225ef834b51
+--- /dev/null
++++ b/src/main/java/net/buildtheearth/cubicpaper/CubicStoreList.java
+@@ -0,0 +1,13 @@
++package net.buildtheearth.cubicpaper;
++
++public class CubicStoreList {
++
++    public static void registerCubicStore(String storageWorldName) {
++        CubeOverlapManager.put(storageWorldName, new CubeOverlapLevelManager(storageWorldName));
++    }
++
++
++    public static CubeOverlapLevelManager getCubicStore(String storageWorldName) {
++        return CubeOverlapManager.get(storageWorldName);
++    }
++}
+diff --git a/src/main/java/net/buildtheearth/cubicpaper/CubicWorldList.java b/src/main/java/net/buildtheearth/cubicpaper/CubicWorldList.java
+new file mode 100644
+index 0000000000000000000000000000000000000000..bfeb288b9015d6b900c52c51d0cd848e405e0e23
+--- /dev/null
++++ b/src/main/java/net/buildtheearth/cubicpaper/CubicWorldList.java
+@@ -0,0 +1,40 @@
++package net.buildtheearth.cubicpaper;
++
++import java.util.ArrayList;
++import java.util.Arrays;
++import java.util.HashMap;
++import java.util.HashSet;
++
++//TODO: Make an api for this and don't just hardcode it
++public class CubicWorldList {
++    //Absolutely just for testing sake
++    //Key is the world name, value is "save world name"
++    //The levels could very well not exist yet, you should add them here before you even create the world frankly speaking
++    private static HashMap<String, String> worldNames = new HashMap<>();
++
++    private static HashMap<String, Integer> worldHeightOffsets = new HashMap<>();
++
++    public static boolean isWorldCubic(String worldName) {
++        return worldNames.containsKey(worldName);
++    }
++
++    public CubeOverlapLevelManager getOverlapLevelManager(String saveWorldName) {
++        return CubeOverlapManager.get(saveWorldName);
++    }
++
++    public static void addWorld(String worldName, String saveWorldName) {
++        worldNames.put(worldName, saveWorldName);
++    }
++
++    public static void removeWorld(String worldName) {
++        worldNames.remove(worldName);
++    }
++
++    public static void setWorldHeightOffset(String worldName, int offset) {
++        worldHeightOffsets.put(worldName, offset);
++    }
++
++    public static int getWorldHeightOffset(String worldName) {
++        return worldHeightOffsets.getOrDefault(worldName, 0);
++    }
++}
+diff --git a/src/main/java/net/buildtheearth/cubicpaper/LevelChunkSectionHolder.java b/src/main/java/net/buildtheearth/cubicpaper/LevelChunkSectionHolder.java
+new file mode 100644
+index 0000000000000000000000000000000000000000..82127b1d538b4c103fd8e866537a748aed59d7d8
+--- /dev/null
++++ b/src/main/java/net/buildtheearth/cubicpaper/LevelChunkSectionHolder.java
+@@ -0,0 +1,28 @@
++package net.buildtheearth.cubicpaper;
++
++import net.minecraft.world.level.chunk.LevelChunkSection;
++
++import java.util.concurrent.ConcurrentHashMap;
++
++public class LevelChunkSectionHolder {
++    private LevelChunkSection section;
++
++    private ConcurrentHashMap<String, String> holderNames = new ConcurrentHashMap<>();
++
++    public LevelChunkSectionHolder(LevelChunkSection section) {
++        this.section = section;
++    }
++
++
++    public LevelChunkSection getSection(String worldName) {
++        if (!holderNames.containsKey(worldName)) {
++            holderNames.put(worldName, worldName);
++        }
++        return section;
++
++    }
++
++    public void giveUpSection(String worldName) {
++        holderNames.remove(worldName);
++    }
++}
+diff --git a/src/main/java/net/buildtheearth/cubicpaper/store/RocksDBStorageImpl.java b/src/main/java/net/buildtheearth/cubicpaper/store/RocksDBStorageImpl.java
+new file mode 100644
+index 0000000000000000000000000000000000000000..8d33b3d3dfb7947eabf5a4f4d0249e53afaa6062
+--- /dev/null
++++ b/src/main/java/net/buildtheearth/cubicpaper/store/RocksDBStorageImpl.java
+@@ -0,0 +1,31 @@
++package net.buildtheearth.cubicpaper.store;
++import net.minecraft.nbt.CompoundTag;
++import org.rocksdb.RocksDB;
++import org.rocksdb.RocksDBException;
++import org.rocksdb.Options;
++
++public class RocksDBStorageImpl {
++    static {
++        RocksDB.loadLibrary();
++    }
++
++    private static RocksDB db;
++
++    public RocksDBStorageImpl(String path) {
++        Options options = new Options();
++        options.setCreateIfMissing(true);
++        options.setCreateMissingColumnFamilies(true);
++        try {
++            db = RocksDB.open(options, path);
++        } catch (RocksDBException e) {
++            throw new RuntimeException(e);
++        }
++    }
++
++    public void putCube(int x, int z, CompoundTag tag) {
++
++    }
++
++
++
++}
+diff --git a/src/main/java/net/buildtheearth/cubicpaper/util/NBTCompression.java b/src/main/java/net/buildtheearth/cubicpaper/util/NBTCompression.java
+new file mode 100644
+index 0000000000000000000000000000000000000000..2e84775e0cece991d974964b13adfa09951ec1b3
+--- /dev/null
++++ b/src/main/java/net/buildtheearth/cubicpaper/util/NBTCompression.java
+@@ -0,0 +1,45 @@
++package net.buildtheearth.cubicpaper.util;
++
++
++import io.netty.buffer.*;
++import net.minecraft.nbt.CompoundTag;
++import net.minecraft.nbt.NbtIo;
++
++import java.io.IOException;
++import java.io.InputStream;
++import java.io.OutputStream;
++import java.nio.ByteBuffer;
++import java.util.zip.GZIPInputStream;
++import java.util.zip.GZIPOutputStream;
++
++//Netty ByteBuf compression
++public class NBTCompression {
++
++    public static ByteBuf compressTag(CompoundTag tag) throws IOException {
++        ByteBuf src = ByteBufAllocator.DEFAULT.heapBuffer();
++        NbtIo.write(tag, new ByteBufOutputStream(src));
++
++        //Look into wheter i really need to use a heapBuffer, since we are in a multithreaded context it may be slower unless we sun.misc.Unsafe our way out of this pickle
++
++        ByteBuf buf = ByteBufAllocator.DEFAULT.heapBuffer(src.readableBytes());
++        try (OutputStream writeable = new GZIPOutputStream(new ByteBufOutputStream(buf))) {
++            writeable.write(src.array(), src.arrayOffset(), src.readableBytes());
++        }
++
++        return buf;
++    }
++
++    public static CompoundTag decompressTag(ByteBuf buf) throws IOException {
++        ByteBuf src = null;
++
++        //Look into wheter i really need to use a heapBuffer, since we are in a multithreaded context it may be slower unless we sun.misc.Unsafe our way out of this pickle
++
++        try (InputStream is = new GZIPInputStream(new ByteBufInputStream(buf))) {
++            src = Unpooled.wrappedBuffer(ByteBuffer.wrap(is.readAllBytes()));
++        }
++
++        CompressedStreamTools.read(src);
++
++        return NbtIo.read();
++    }
++}
+diff --git a/src/main/java/net/minecraft/world/level/chunk/storage/ChunkSerializer.java b/src/main/java/net/minecraft/world/level/chunk/storage/ChunkSerializer.java
+index 26431a814f6472689484dcc7cd8183fe1676e17e..c38b742369b2a8484048e167b739945d2907f286 100644
+--- a/src/main/java/net/minecraft/world/level/chunk/storage/ChunkSerializer.java
++++ b/src/main/java/net/minecraft/world/level/chunk/storage/ChunkSerializer.java
+@@ -17,6 +17,11 @@ import java.util.Map.Entry;
+ import java.util.Objects;
+ import java.util.Optional;
+ import javax.annotation.Nullable;
++
++import net.buildtheearth.cubicpaper.CubeOverlapLevelManager;
++import net.buildtheearth.cubicpaper.CubeOverlapManager;
++import net.buildtheearth.cubicpaper.CubicStoreList;
++import net.buildtheearth.cubicpaper.CubicWorldList;
+ import net.minecraft.core.BlockPos;
+ import net.minecraft.core.Holder;
+ import net.minecraft.core.Registry;
+@@ -141,6 +146,8 @@ public class ChunkSerializer {
+         return holder.protoChunk;
+     }
+ 
++    //TODO: Look into this for intercepting the chunk nbt read
++    //TODO: also null the check nbt itself when it tries to read from disk
+     public static InProgressChunkHolder readInProgressChunkHolder(ServerLevel world, PoiManager poiStorage, ChunkPos chunkPos, CompoundTag nbt) {
+         // Paper end - rewrite chunk system
+         // Paper start - Do not let the server load chunks from newer versions
+@@ -177,12 +184,44 @@ public class ChunkSerializer {
+         Codec<PalettedContainer<Holder<Biome>>> codec = ChunkSerializer.makeBiomeCodecRW(iregistry); // CraftBukkit - read/write
+         boolean flag2 = false;
+ 
++        //CubicPaper begin - check if any part of this chunk is cached
++
++        boolean isWorldCubic = CubicWorldList.isWorldCubic(world.serverLevelData.getLevelName());
++        CubeOverlapLevelManager cubeOverlapManager = isWorldCubic ? CubicStoreList.getCubicStore(world.serverLevelData.getLevelName()) : null;
++        boolean cubicCached = isWorldCubic && cubeOverlapManager.isChunkLoaded(chunkPos.x, chunkPos.z);
++
++        //CubicPaper end
++
+         for (int j = 0; j < nbttaglist.size(); ++j) {
+             CompoundTag nbttagcompound1 = nbttaglist.getCompound(j); CompoundTag sectionData = nbttagcompound1; // Paper
++
++            //CubicPaper begin
++            // We will be offsetting the chunk section back to vanilla height
++
+             byte b0 = nbttagcompound1.getByte("Y");
+             int k = world.getSectionIndexFromSectionY(b0);
+ 
++            //If its a cubic world, normalize the height again
++            if (isWorldCubic) {
++                k -= CubicWorldList.getWorldHeightOffset(world.serverLevelData.getLevelName());
++            }
++            //CubicPaper end
++
+             if (k >= 0 && k < achunksection.length) {
++
++                //CubicPaper begin
++                if (cubicCached) {
++
++                    //if it is cached, then we will set the data to be as defined by the caching manager, and continue
++                    if (cubeOverlapManager.isChunkSectionLoaded(chunkPos.x, chunkPos.z, b0)) {
++                        achunksection[k] = cubeOverlapManager.getChunkSectionIfLoaded(chunkPos.x, chunkPos.z, k, world.serverLevelData.getLevelName());
++                        continue;
++                    }
++
++                }
++
++                //CubicPaper end
++
+                 PalettedContainer datapaletteblock;
+                 // Paper start - Anti-Xray - Add preset block states
+                 BlockState[] presetBlockStates = world.chunkPacketBlockController.getPresetBlockStates(world, chunkPos, b0);
+@@ -222,6 +261,13 @@ public class ChunkSerializer {
+             if (flag) {
+                 try {
+                 int y = sectionData.getByte("Y");
++
++                //CubicPaper begin
++                if (isWorldCubic) {
++                    //CubicPaper - We need to offset the height back to vanilla
++                    y -= CubicWorldList.getWorldHeightOffset(world.serverLevelData.getLevelName()) * 16;
++                }
++                //CubicPaper end
+                 // Paper end - rewrite the light engine
+                 if (flag3) {
+                     // Paper start - rewrite the light engine
+@@ -448,6 +494,8 @@ public class ChunkSerializer {
+         // Paper start
+         return saveChunk(world, chunk, null);
+     }
++
++    //TODO: Save chunk here
+     public static CompoundTag saveChunk(ServerLevel world, ChunkAccess chunk, @org.checkerframework.checker.nullness.qual.Nullable AsyncSaveData asyncsavedata) {
+         // Paper end
+         // Paper start - rewrite light impl
+@@ -460,7 +508,7 @@ public class ChunkSerializer {
+         CompoundTag nbttagcompound = NbtUtils.addCurrentDataVersion(new CompoundTag());
+ 
+         nbttagcompound.putInt("xPos", chunkcoordintpair.x);
+-        nbttagcompound.putInt("yPos", chunk.getMinSection());
++        nbttagcompound.putInt("yPos", chunk.getMinSection()); //CubicPaper - we can just kind of ignore this bit, we will never read it
+         nbttagcompound.putInt("zPos", chunkcoordintpair.z);
+         nbttagcompound.putLong("LastUpdate", asyncsavedata != null ? asyncsavedata.worldTime : world.getGameTime()); // Paper - async chunk unloading // Paper - diff on change
+         nbttagcompound.putLong("InhabitedTime", chunk.getInhabitedTime());
+@@ -478,6 +526,8 @@ public class ChunkSerializer {
+             });
+         }
+ 
++
++        //TODO: CubicPaper - Figure out how to hook into retrogen
+         BelowZeroRetrogen belowzeroretrogen = chunk.getBelowZeroRetrogen();
+ 
+         if (belowzeroretrogen != null) {

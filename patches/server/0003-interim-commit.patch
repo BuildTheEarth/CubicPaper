@@ -1,0 +1,2146 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Sushrut Pola <sushrut.pola@gmail.com>
+Date: Mon, 12 Aug 2024 06:30:00 -0700
+Subject: [PATCH] interim commit
+
+
+diff --git a/build.gradle.kts b/build.gradle.kts
+index c216457bbe5066859d6ef26e58ab9f447bbf494f..5a6d8de7660a67bc0984a5d513a01d636686642e 100644
+--- a/build.gradle.kts
++++ b/build.gradle.kts
+@@ -62,7 +62,7 @@ dependencies {
+     implementation("io.papermc:reflection-rewriter-proxy-generator:$reflectionRewriterVersion")
+     // Paper end - Remap reflection
+ 
+-    implementation("org.rocksdb:rocksdbjni:6.6.4") // CubicPaper rocksdb JNI bindings
++    implementation("org.rocksdb:rocksdbjni:9.4.0") // CubicPaper rocksdb JNI bindings
+ }
+ 
+ paperweight {
+diff --git a/src/main/java/dev/sushrut/configuration/BTEConfig.java b/src/main/java/dev/sushrut/configuration/BTEConfig.java
+new file mode 100644
+index 0000000000000000000000000000000000000000..7a9dd18e60dc68a86d3856f8cdb492dc57bfe444
+--- /dev/null
++++ b/src/main/java/dev/sushrut/configuration/BTEConfig.java
+@@ -0,0 +1,142 @@
++package dev.sushrut.configuration;
++
++import com.google.common.base.Throwables;
++import org.bukkit.Bukkit;
++import org.bukkit.command.Command;
++import org.bukkit.configuration.InvalidConfigurationException;
++import org.bukkit.configuration.file.YamlConfiguration;
++import org.spigotmc.SpigotCommand;
++import org.spigotmc.SpigotConfig;
++
++import java.io.File;
++import java.io.IOException;
++import java.lang.reflect.InvocationTargetException;
++import java.lang.reflect.Method;
++import java.lang.reflect.Modifier;
++import java.nio.file.FileSystems;
++import java.nio.file.Path;
++import java.util.Arrays;
++import java.util.HashMap;
++import java.util.List;
++import java.util.logging.Level;
++
++public class BTEConfig {
++
++    private static File CONFIG_FILE;
++    public static YamlConfiguration config;
++    static int version;
++
++    private static final String HEADER = "This is the main configuration file for CubicPaper.\n"
++            + "This is where we have to declare cubic worlds, however this is only a declaration, the plugin will deal with most of it for you\n"
++            + "with caution, and make sure you know what each option does before configuring.\n"
++            + "Discord: https://buildtheearth.net/discord\n"
++            + "Website: http://buildtheearth.net/\n";
++
++    public static void init(File configFile)
++    {
++        BTEConfig.CONFIG_FILE = configFile;
++        BTEConfig.config = new YamlConfiguration();
++
++        try
++        {
++            BTEConfig.config.load( BTEConfig.CONFIG_FILE );
++        } catch ( IOException ex )
++        {
++        } catch ( InvalidConfigurationException ex )
++        {
++            Bukkit.getLogger().log( Level.SEVERE, "Could not load buildtheearth.yml, please correct your syntax errors", ex );
++            throw Throwables.propagate( ex );
++        }
++
++        BTEConfig.config.options().header( BTEConfig.HEADER );
++        BTEConfig.config.options().copyDefaults( true );
++
++        BTEConfig.version =  BTEConfig.getInt( "config-version", 1 );
++        BTEConfig.set( "config-version", 1 );
++        BTEConfig.readConfig( BTEConfig.class, null );
++    }
++
++    public static void readConfig(Class<?> clazz, Object instance) // Paper - package-private -> public
++    {
++        for ( Method method : clazz.getDeclaredMethods() )
++        {
++            if ( Modifier.isPrivate( method.getModifiers() ) )
++            {
++                if ( method.getParameterTypes().length == 0 && method.getReturnType() == Void.TYPE )
++                {
++                    try
++                    {
++                        method.setAccessible( true );
++                        method.invoke( instance );
++                    } catch ( InvocationTargetException ex )
++                    {
++                        throw Throwables.propagate( ex.getCause() );
++                    } catch ( Exception ex )
++                    {
++                        Bukkit.getLogger().log( Level.SEVERE, "Error invoking " + method, ex );
++                    }
++                }
++            }
++        }
++
++        BTEConfig.save();
++    }
++    public static void save() {
++        // Paper end
++        try
++        {
++            BTEConfig.config.save( BTEConfig.CONFIG_FILE );
++        } catch ( IOException ex )
++        {
++            Bukkit.getLogger().log( Level.SEVERE, "Could not save " + BTEConfig.CONFIG_FILE, ex );
++        }
++    }
++
++    private static void set(String path, Object val)
++    {
++        BTEConfig.config.set( path, val );
++    }
++
++    private static boolean getBoolean(String path, boolean def)
++    {
++        BTEConfig.config.addDefault( path, def );
++        return BTEConfig.config.getBoolean( path, BTEConfig.config.getBoolean( path ) );
++    }
++
++    private static int getInt(String path, int def)
++    {
++        BTEConfig.config.addDefault( path, def );
++        return BTEConfig.config.getInt( path, BTEConfig.config.getInt( path ) );
++    }
++
++    private static <T> List getList(String path, T def)
++    {
++        BTEConfig.config.addDefault( path, def );
++        return (List<T>) BTEConfig.config.getList( path, BTEConfig.config.getList( path ) );
++    }
++
++    private static String getString(String path, String def)
++    {
++        BTEConfig.config.addDefault( path, def );
++        return BTEConfig.config.getString( path, BTEConfig.config.getString( path ) );
++    }
++
++    private static double getDouble(String path, double def)
++    {
++        BTEConfig.config.addDefault( path, def );
++        return BTEConfig.config.getDouble( path, BTEConfig.config.getDouble( path ) );
++    }
++
++    public static List<String> enabledWorlds;
++
++    private static void enabledWorlds() {
++        enabledWorlds = BTEConfig.getList("worldlist", Arrays.asList(""));
++    }
++
++    public static Path dbPath;
++
++    private static void dbPath() {
++        dbPath = FileSystems.getDefault().getPath(BTEConfig.getString("db.path", "db"));
++    }
++
++}
+diff --git a/src/main/java/dev/sushrut/util/PositionSerializationUtils.java b/src/main/java/dev/sushrut/util/PositionSerializationUtils.java
+new file mode 100644
+index 0000000000000000000000000000000000000000..e0a74ac2f305a9b887c4fb69b3a012ff6c7b1a50
+--- /dev/null
++++ b/src/main/java/dev/sushrut/util/PositionSerializationUtils.java
+@@ -0,0 +1,41 @@
++package dev.sushrut.util;
++
++
++import io.netty.buffer.ByteBuf;
++import io.netty.buffer.ByteBufAllocator;
++
++import java.nio.charset.StandardCharsets;
++
++import static net.minecraft.world.level.ChunkPos.asLong;
++
++public class PositionSerializationUtils {
++
++
++    public static void intToBytes(int n, byte[] target, int idx) {
++
++        target[0 + idx] = (byte) (n & 255);
++        target[1 + idx] = (byte) ((n >> 8) & 255);
++        target[2 + idx] = (byte) ((n >> 16) & 255);
++        target[3 + idx] = (byte) (n >> 24);
++    }
++
++
++    public static byte[] serializeChunk(int x, int z) {
++        byte[] chunkSerialized = new byte[8];
++        intToBytes(x, chunkSerialized, 0);
++        intToBytes(z, chunkSerialized, 4);
++
++        return chunkSerialized;
++    }
++
++    //NOTE: WATCH THE ORDERING FR
++    public static byte[] serializeCube(int x, int z, int y) {
++        byte[] chunkSerialized = new byte[12];
++        intToBytes(x, chunkSerialized, 0);
++        intToBytes(z, chunkSerialized, 4);
++        intToBytes(y, chunkSerialized, 8);
++
++        return chunkSerialized;
++    }
++
++}
+diff --git a/src/main/java/io/papermc/paper/chunk/system/RegionizedPlayerChunkLoader.java b/src/main/java/io/papermc/paper/chunk/system/RegionizedPlayerChunkLoader.java
+index 149cfb0587299f72fcfddf395fb71b70438986c1..0a1550db3f200921a4f58ec57f61c823b2cb8038 100644
+--- a/src/main/java/io/papermc/paper/chunk/system/RegionizedPlayerChunkLoader.java
++++ b/src/main/java/io/papermc/paper/chunk/system/RegionizedPlayerChunkLoader.java
+@@ -324,6 +324,8 @@ public class RegionizedPlayerChunkLoader {
+         }
+     }
+ 
++    //TODO: Use this class to do subsets of chunk data
++
+     public static final class PlayerChunkLoaderData {
+ 
+         private static final AtomicLong ID_GENERATOR = new AtomicLong();
+diff --git a/src/main/java/net/buildtheearth/cubicpaper/CubeOverlapLevelManager.java b/src/main/java/net/buildtheearth/cubicpaper/CubeOverlapLevelManager.java
+deleted file mode 100644
+index 00d6d7eb7076babd188ffc016a7ef7d01ef555ab..0000000000000000000000000000000000000000
+--- a/src/main/java/net/buildtheearth/cubicpaper/CubeOverlapLevelManager.java
++++ /dev/null
+@@ -1,41 +0,0 @@
+-package net.buildtheearth.cubicpaper;
+-
+-import net.minecraft.world.level.chunk.LevelChunkSection;
+-
+-import java.util.concurrent.ConcurrentHashMap;
+-
+-import static net.minecraft.world.level.ChunkPos.asLong;
+-
+-public class CubeOverlapLevelManager {
+-    //use asLong to get the key to the first hashamp, and then the key to the embedded hashmap should just be the chunk section index, may change to an array later
+-    //The idea is we store already loaded chunk sections here for their lifecycle so we can avoid weird access modification issues when multiple people edit a chunk at the same time
+-    //This is a temporary solution until we can figure out a better way to handle chunk section access
+-    private  ConcurrentHashMap<Long, ConcurrentHashMap<Integer, LevelChunkSectionHolder>> cubeOverlapMap = new ConcurrentHashMap<>();
+-
+-    String storeWorld;
+-
+-    public CubeOverlapLevelManager(String storeWorld) {
+-        this.storeWorld = storeWorld;
+-    }
+-
+-
+-    public boolean isChunkLoaded(int x, int z) {
+-        return cubeOverlapMap.containsKey(asLong(x, z));
+-    }
+-
+-    public boolean isChunkSectionLoaded(int x, int z, int sectionIndex) {
+-        return isChunkLoaded(x, z) && cubeOverlapMap.get(asLong(x, z)).containsKey(sectionIndex);
+-    }
+-
+-    public LevelChunkSection getChunkSectionIfLoaded(int x, int z, int sectionIndex, String worldName) {
+-        return isChunkSectionLoaded(x, z, sectionIndex) ? cubeOverlapMap.get(asLong(x, z)).get(sectionIndex).getSection(worldName) : null;
+-    }
+-
+-    //This just gives up the section for the specific world, if it's the last world to give up the section, it will be removed from the map
+-    public void discardChunkSection(int x, int z, int sectionIndex, String worldName) {
+-        if (isChunkSectionLoaded(x, z, sectionIndex)) {
+-            cubeOverlapMap.get(asLong(x, z)).get(sectionIndex).giveUpSection(worldName);
+-        }
+-    }
+-
+-}
+diff --git a/src/main/java/net/buildtheearth/cubicpaper/CubeOverlapManager.java b/src/main/java/net/buildtheearth/cubicpaper/CubeOverlapManager.java
+deleted file mode 100644
+index 8c37e1a2ef782dd633831d825db1ed47f74f71d7..0000000000000000000000000000000000000000
+--- a/src/main/java/net/buildtheearth/cubicpaper/CubeOverlapManager.java
++++ /dev/null
+@@ -1,16 +0,0 @@
+-package net.buildtheearth.cubicpaper;
+-
+-import java.util.HashMap;
+-
+-public class CubeOverlapManager {
+-    //mapping true world name to cube overlap level manager
+-    private static HashMap<String, CubeOverlapLevelManager> store = new HashMap<>();
+-
+-    public static CubeOverlapLevelManager get(String worldName) {
+-        return store.get(worldName);
+-    }
+-
+-    public static void put(String worldName, CubeOverlapLevelManager manager) {
+-        store.put(worldName, manager);
+-    }
+-}
+diff --git a/src/main/java/net/buildtheearth/cubicpaper/CubicStoreList.java b/src/main/java/net/buildtheearth/cubicpaper/CubicStoreList.java
+deleted file mode 100644
+index dfd6fefa133aeca14222e18ff1916225ef834b51..0000000000000000000000000000000000000000
+--- a/src/main/java/net/buildtheearth/cubicpaper/CubicStoreList.java
++++ /dev/null
+@@ -1,13 +0,0 @@
+-package net.buildtheearth.cubicpaper;
+-
+-public class CubicStoreList {
+-
+-    public static void registerCubicStore(String storageWorldName) {
+-        CubeOverlapManager.put(storageWorldName, new CubeOverlapLevelManager(storageWorldName));
+-    }
+-
+-
+-    public static CubeOverlapLevelManager getCubicStore(String storageWorldName) {
+-        return CubeOverlapManager.get(storageWorldName);
+-    }
+-}
+diff --git a/src/main/java/net/buildtheearth/cubicpaper/CubicWorldList.java b/src/main/java/net/buildtheearth/cubicpaper/CubicWorldList.java
+index bfeb288b9015d6b900c52c51d0cd848e405e0e23..d1dfff3e771f0338d19532d4606eb6b34a9e6eff 100644
+--- a/src/main/java/net/buildtheearth/cubicpaper/CubicWorldList.java
++++ b/src/main/java/net/buildtheearth/cubicpaper/CubicWorldList.java
+@@ -18,10 +18,6 @@ public class CubicWorldList {
+         return worldNames.containsKey(worldName);
+     }
+ 
+-    public CubeOverlapLevelManager getOverlapLevelManager(String saveWorldName) {
+-        return CubeOverlapManager.get(saveWorldName);
+-    }
+-
+     public static void addWorld(String worldName, String saveWorldName) {
+         worldNames.put(worldName, saveWorldName);
+     }
+diff --git a/src/main/java/net/buildtheearth/cubicpaper/LevelChunkSectionHolder.java b/src/main/java/net/buildtheearth/cubicpaper/LevelChunkSectionHolder.java
+deleted file mode 100644
+index 82127b1d538b4c103fd8e866537a748aed59d7d8..0000000000000000000000000000000000000000
+--- a/src/main/java/net/buildtheearth/cubicpaper/LevelChunkSectionHolder.java
++++ /dev/null
+@@ -1,28 +0,0 @@
+-package net.buildtheearth.cubicpaper;
+-
+-import net.minecraft.world.level.chunk.LevelChunkSection;
+-
+-import java.util.concurrent.ConcurrentHashMap;
+-
+-public class LevelChunkSectionHolder {
+-    private LevelChunkSection section;
+-
+-    private ConcurrentHashMap<String, String> holderNames = new ConcurrentHashMap<>();
+-
+-    public LevelChunkSectionHolder(LevelChunkSection section) {
+-        this.section = section;
+-    }
+-
+-
+-    public LevelChunkSection getSection(String worldName) {
+-        if (!holderNames.containsKey(worldName)) {
+-            holderNames.put(worldName, worldName);
+-        }
+-        return section;
+-
+-    }
+-
+-    public void giveUpSection(String worldName) {
+-        holderNames.remove(worldName);
+-    }
+-}
+diff --git a/src/main/java/net/buildtheearth/cubicpaper/OffsetData.java b/src/main/java/net/buildtheearth/cubicpaper/OffsetData.java
+new file mode 100644
+index 0000000000000000000000000000000000000000..485f88a944bf860738c99d7db4afbb7996e4ce06
+--- /dev/null
++++ b/src/main/java/net/buildtheearth/cubicpaper/OffsetData.java
+@@ -0,0 +1,48 @@
++package net.buildtheearth.cubicpaper;
++
++public class OffsetData {
++    private int offsetX;
++    private int offsetY;
++    private int offsetZ;
++    private byte worldHeight;
++
++    public OffsetData(int offsetX, int offsetY, int offsetZ, byte worldHeight) {
++        this.offsetX = offsetX;
++        this.offsetY = offsetY;
++        this.offsetZ = offsetZ;
++        this.worldHeight = worldHeight;
++    }
++
++
++    public int getOffsetX() {
++        return offsetX;
++    }
++
++    public int getOffsetY() {
++        return offsetY;
++    }
++
++    public int getOffsetZ() {
++        return offsetZ;
++    }
++
++    public void setOffsetX(int offsetX) {
++        this.offsetX = offsetX;
++    }
++
++    public void setOffsetY(int offsetY) {
++        this.offsetY = offsetY;
++    }
++
++    public void setOffsetZ(int offsetZ) {
++        this.offsetZ = offsetZ;
++    }
++
++    public byte getWorldHeight() {
++        return worldHeight;
++    }
++
++    public void setWorldHeight(byte worldHeight) {
++        this.worldHeight = worldHeight;
++    }
++}
+diff --git a/src/main/java/net/buildtheearth/cubicpaper/PlayerPosManager.java b/src/main/java/net/buildtheearth/cubicpaper/PlayerPosManager.java
+new file mode 100644
+index 0000000000000000000000000000000000000000..f84bf684690aabbdf11db5be5d8d6c7acab22152
+--- /dev/null
++++ b/src/main/java/net/buildtheearth/cubicpaper/PlayerPosManager.java
+@@ -0,0 +1,19 @@
++package net.buildtheearth.cubicpaper;
++
++import java.util.concurrent.ConcurrentHashMap;
++
++public class PlayerPosManager {
++    private static ConcurrentHashMap<String, OffsetData> playerData = new ConcurrentHashMap<>();
++
++    public static void addPlayer(String UUID, int offsetX, int offsetY, int offsetZ, byte worldHeight) {
++        playerData.put(UUID, new OffsetData(UUID, offsetX, offsetY, offsetZ, worldHeight));
++    }
++
++    public static void removePlayer(String UUID) {
++        playerData.remove(UUID);
++    }
++
++    public static OffsetData getPlayer(String UUID) {
++        return playerData.get(UUID);
++    }
++}
+diff --git a/src/main/java/net/buildtheearth/cubicpaper/cache/CubicDimensionDataStorage.java b/src/main/java/net/buildtheearth/cubicpaper/cache/CubicDimensionDataStorage.java
+new file mode 100644
+index 0000000000000000000000000000000000000000..eaba40f4dbaf48cf8cf0c025b2ab35270e3f79ab
+--- /dev/null
++++ b/src/main/java/net/buildtheearth/cubicpaper/cache/CubicDimensionDataStorage.java
+@@ -0,0 +1,134 @@
++package net.buildtheearth.cubicpaper.cache;
++
++import com.google.common.collect.Maps;
++import com.mojang.datafixers.DataFixer;
++import com.mojang.logging.LogUtils;
++import java.io.DataInputStream;
++import java.io.File;
++import java.io.FileInputStream;
++import java.io.IOException;
++import java.io.InputStream;
++import java.io.PushbackInputStream;
++import java.util.Map;
++import java.util.function.BiFunction;
++import javax.annotation.Nullable;
++
++import net.buildtheearth.cubicpaper.store.RocksDBStorageImpl;
++import net.minecraft.SharedConstants;
++import net.minecraft.core.HolderLookup;
++import net.minecraft.nbt.CompoundTag;
++import net.minecraft.nbt.NbtAccounter;
++import net.minecraft.nbt.NbtIo;
++import net.minecraft.nbt.NbtUtils;
++import net.minecraft.util.FastBufferedInputStream;
++import net.minecraft.util.datafix.DataFixTypes;
++import net.minecraft.world.level.saveddata.SavedData;
++import org.rocksdb.ColumnFamilyHandle;
++import org.slf4j.Logger;
++
++public class CubicDimensionDataStorage implements java.io.Closeable { // Paper - Write SavedData IO async
++    private static final Logger LOGGER = LogUtils.getLogger();
++    public final Map<String, SavedData> cache = Maps.newHashMap();
++    private final DataFixer fixerUpper;
++    private final HolderLookup.Provider registries;
++    protected final java.util.concurrent.ExecutorService ioExecutor; // Paper - Write SavedData IO async
++    private final ColumnFamilyHandle worldHandle;
++
++    public CubicDimensionDataStorage(String worldName, DataFixer dataFixer, HolderLookup.Provider registryLookup) {
++        this.fixerUpper = dataFixer;
++        this.worldHandle = RocksDBStorageImpl.getWorldHandle(worldName);
++        this.registries = registryLookup;
++        this.ioExecutor = java.util.concurrent.Executors.newSingleThreadExecutor(new com.google.common.util.concurrent.ThreadFactoryBuilder().setNameFormat("DimensionDataIO - " + dataFolder.getParent() + " - %d").setDaemon(true).build()); // Paper - Write SavedData IO async
++    }
++
++    private File getDataFile(String id) {
++        return new File(this.dataFolder, id + ".dat");
++    }
++
++    public <T extends SavedData> T computeIfAbsent(SavedData.Factory<T> type, String id) {
++        T savedData = this.get(type, id);
++        if (savedData != null) {
++            return savedData;
++        } else {
++            T savedData2 = (T)type.constructor().get();
++            this.set(id, savedData2);
++            return savedData2;
++        }
++    }
++
++    @Nullable
++    public <T extends SavedData> T get(SavedData.Factory<T> type, String id) {
++        SavedData savedData = this.cache.get(id);
++        if (savedData == null && !this.cache.containsKey(id)) {
++            savedData = this.readSavedData(type.deserializer(), type.type(), id);
++            this.cache.put(id, savedData);
++        }
++
++        return (T)savedData;
++    }
++
++    @Nullable
++    private <T extends SavedData> T readSavedData(BiFunction<CompoundTag, HolderLookup.Provider, T> readFunction, DataFixTypes dataFixTypes, String id) {
++        try {
++            File file = this.getDataFile(id);
++            if (file.exists()) {
++                CompoundTag compoundTag = this.readTagFromDisk(id, dataFixTypes, SharedConstants.getCurrentVersion().getDataVersion().getVersion());
++                return readFunction.apply(compoundTag.getCompound("data"), this.registries);
++            }
++        } catch (Exception var6) {
++            LOGGER.error("Error loading saved data: {}", id, var6);
++        }
++
++        return null;
++    }
++
++    public void set(String id, SavedData state) {
++        this.cache.put(id, state);
++    }
++
++    public CompoundTag readTagFromDisk(String id, DataFixTypes dataFixTypes, int currentSaveVersion) throws IOException {
++        File file = this.getDataFile(id);
++
++        CompoundTag var9;
++        try (
++                InputStream inputStream = new FileInputStream(file);
++                PushbackInputStream pushbackInputStream = new PushbackInputStream(new FastBufferedInputStream(inputStream), 2);
++        ) {
++            CompoundTag compoundTag;
++            if (this.isGzip(pushbackInputStream)) {
++                compoundTag = NbtIo.readCompressed(pushbackInputStream, NbtAccounter.unlimitedHeap());
++            } else {
++                try (DataInputStream dataInputStream = new DataInputStream(pushbackInputStream)) {
++                    compoundTag = NbtIo.read(dataInputStream);
++                }
++            }
++
++            int i = NbtUtils.getDataVersion(compoundTag, 1343);
++            var9 = dataFixTypes.update(this.fixerUpper, compoundTag, i, currentSaveVersion);
++        }
++
++        return var9;
++    }
++
++    // Paper start - Write SavedData IO async
++    @Override
++    public void close() throws IOException {
++        save(false);
++        this.ioExecutor.shutdown();
++    }
++    // Paper end - Write SavedData IO async
++
++    public void save(boolean async) { // Paper - Write SavedData IO async
++        this.cache.forEach((id, state) -> {
++            if (state != null) {
++                // Paper start - Write SavedData IO async
++                final java.util.concurrent.CompletableFuture<Void> save = state.save(this.getDataFile(id), this.registries, this.ioExecutor);
++                if (!async) {
++                    save.join();
++                }
++                // Paper end - Write SavedData IO async
++            }
++        });
++    }
++}
++
+diff --git a/src/main/java/net/buildtheearth/cubicpaper/cache/CubicServerChunkCache.java b/src/main/java/net/buildtheearth/cubicpaper/cache/CubicServerChunkCache.java
+new file mode 100644
+index 0000000000000000000000000000000000000000..7bc818aa10c01bd87e5b09921e3de16d1eb80645
+--- /dev/null
++++ b/src/main/java/net/buildtheearth/cubicpaper/cache/CubicServerChunkCache.java
+@@ -0,0 +1,871 @@
++package net.buildtheearth.cubicpaper.cache;
++
++import com.google.common.annotations.VisibleForTesting;
++import com.google.common.collect.Lists;
++import com.mojang.datafixers.DataFixer;
++import java.io.File;
++import java.io.IOException;
++import java.util.Arrays;
++import java.util.Iterator;
++import java.util.List;
++import java.util.Objects;
++import java.util.concurrent.CompletableFuture;
++import java.util.concurrent.Executor;
++import java.util.function.BooleanSupplier;
++import java.util.function.Consumer;
++import java.util.function.Supplier;
++import javax.annotation.Nullable;
++
++import net.buildtheearth.cubicpaper.OffsetData;
++import net.minecraft.Util;
++import net.minecraft.core.BlockPos;
++import net.minecraft.core.SectionPos;
++import net.minecraft.network.protocol.Packet;
++import net.minecraft.server.level.*;
++import net.minecraft.server.level.progress.ChunkProgressListener;
++import net.minecraft.util.VisibleForDebug;
++import net.minecraft.util.profiling.ProfilerFiller;
++import net.minecraft.util.thread.BlockableEventLoop;
++import net.minecraft.world.entity.Entity;
++import net.minecraft.world.entity.ai.village.poi.PoiManager;
++import net.minecraft.world.level.ChunkPos;
++import net.minecraft.world.level.GameRules;
++import net.minecraft.world.level.Level;
++import net.minecraft.world.level.LightLayer;
++import net.minecraft.world.level.LocalMobCapCalculator;
++import net.minecraft.world.level.NaturalSpawner;
++import net.minecraft.world.level.chunk.ChunkAccess;
++import net.minecraft.world.level.chunk.ChunkGenerator;
++import net.minecraft.world.level.chunk.ChunkGeneratorStructureState;
++import net.minecraft.world.level.chunk.ChunkSource;
++import net.minecraft.world.level.chunk.LevelChunk;
++import net.minecraft.world.level.chunk.LightChunk;
++import net.minecraft.world.level.chunk.status.ChunkStatus;
++import net.minecraft.world.level.chunk.storage.ChunkScanAccess;
++import net.minecraft.world.level.entity.ChunkStatusUpdateListener;
++import net.minecraft.world.level.levelgen.RandomState;
++import net.minecraft.world.level.levelgen.structure.templatesystem.StructureTemplateManager;
++import net.minecraft.world.level.storage.DimensionDataStorage;
++import net.minecraft.world.level.storage.LevelStorageSource;
++
++public class CubicServerChunkCache extends ChunkSource {
++
++    public static final org.slf4j.Logger LOGGER = com.mojang.logging.LogUtils.getLogger(); // Paper
++    private static final List<ChunkStatus> CHUNK_STATUSES = ChunkStatus.getStatusList();
++    private final DistanceManager distanceManager;
++    final ServerLevel level;
++    public final Thread mainThread;
++    final ThreadedLevelLightEngine lightEngine;
++    public final CubicServerChunkCache.MainThreadExecutor mainThreadProcessor;
++    public final ChunkMap chunkMap;
++    private final DimensionDataStorage dataStorage;
++    private long lastInhabitedUpdate;
++    public boolean spawnEnemies = true;
++    public boolean spawnFriendlies = true;
++    private static final int CACHE_SIZE = 4;
++    private final long[] lastChunkPos = new long[4];
++    private final ChunkStatus[] lastChunkStatus = new ChunkStatus[4];
++    private final ChunkAccess[] lastChunk = new ChunkAccess[4];
++    @Nullable
++    @VisibleForDebug
++    private NaturalSpawner.SpawnState lastSpawnState;
++    // Paper start
++    public final io.papermc.paper.util.maplist.IteratorSafeOrderedReferenceSet<LevelChunk> tickingChunks = new io.papermc.paper.util.maplist.IteratorSafeOrderedReferenceSet<>(4096, 0.75f, 4096, 0.15, true);
++    public final io.papermc.paper.util.maplist.IteratorSafeOrderedReferenceSet<LevelChunk> entityTickingChunks = new io.papermc.paper.util.maplist.IteratorSafeOrderedReferenceSet<>(4096, 0.75f, 4096, 0.15, true);
++    final com.destroystokyo.paper.util.concurrent.WeakSeqLock loadedChunkMapSeqLock = new com.destroystokyo.paper.util.concurrent.WeakSeqLock();
++    final it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap<LevelChunk> loadedChunkMap = new it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap<>(8192, 0.5f);
++    final java.util.concurrent.atomic.AtomicLong chunkFutureAwaitCounter = new java.util.concurrent.atomic.AtomicLong(); // Paper - chunk system rewrite
++    private final LevelChunk[] lastLoadedChunks = new LevelChunk[4 * 4];
++    // Paper end
++
++    public CubicServerChunkCache(ServerLevel world, LevelStorageSource.LevelStorageAccess session, DataFixer dataFixer, StructureTemplateManager structureTemplateManager, Executor workerExecutor, ChunkGenerator chunkGenerator, int viewDistance, int simulationDistance, boolean dsync, ChunkProgressListener worldGenerationProgressListener, ChunkStatusUpdateListener chunkStatusChangeListener, Supplier<DimensionDataStorage> persistentStateManagerFactory) {
++        this.level = world;
++        this.mainThreadProcessor = new CubicServerChunkCache.MainThreadExecutor(world);
++        this.mainThread = Thread.currentThread();
++        File file = session.getDimensionPath(world.dimension()).resolve("data").toFile();
++
++        file.mkdirs();
++        this.dataStorage = new DimensionDataStorage(file, dataFixer, world.registryAccess());
++        this.chunkMap = new ChunkMap(world, session, dataFixer, structureTemplateManager, workerExecutor, this.mainThreadProcessor, this, chunkGenerator, worldGenerationProgressListener, chunkStatusChangeListener, persistentStateManagerFactory, viewDistance, dsync);
++        this.lightEngine = this.chunkMap.getLightEngine();
++        this.distanceManager = this.chunkMap.getDistanceManager();
++        this.distanceManager.updateSimulationDistance(simulationDistance);
++        this.clearCache();
++    }
++
++    // CraftBukkit start - properly implement isChunkLoaded
++    public boolean isChunkLoaded(int chunkX, int chunkZ) {
++        ChunkHolder chunk = this.chunkMap.getUpdatingChunkIfPresent(ChunkPos.asLong(chunkX, chunkZ));
++        if (chunk == null) {
++            return false;
++        }
++        return chunk.getFullChunkNow() != null;
++    }
++    // CraftBukkit end
++    // Paper start
++    private static int getChunkCacheKey(int x, int z) {
++        return x & 3 | ((z & 3) << 2);
++    }
++
++    public void addLoadedChunk(LevelChunk chunk, OffsetData offset) {
++        this.loadedChunkMapSeqLock.acquireWrite();
++        try {
++            this.loadedChunkMap.put(chunk.coordinateKey, chunk);
++        } finally {
++            this.loadedChunkMapSeqLock.releaseWrite();
++        }
++
++        // rewrite cache if we have to
++        // we do this since we also cache null chunks
++        int cacheKey = getChunkCacheKey(chunk.locX, chunk.locZ);
++
++        this.lastLoadedChunks[cacheKey] = chunk;
++    }
++
++    public void removeLoadedChunk(LevelChunk chunk, OffsetData offset) {
++        this.loadedChunkMapSeqLock.acquireWrite();
++        try {
++            this.loadedChunkMap.remove(chunk.coordinateKey);
++        } finally {
++            this.loadedChunkMapSeqLock.releaseWrite();
++        }
++
++        // rewrite cache if we have to
++        // we do this since we also cache null chunks
++        int cacheKey = getChunkCacheKey(chunk.locX, chunk.locZ);
++
++        LevelChunk cachedChunk = this.lastLoadedChunks[cacheKey];
++        if (cachedChunk != null && cachedChunk.coordinateKey == chunk.coordinateKey) {
++            this.lastLoadedChunks[cacheKey] = null;
++        }
++    }
++
++    public final LevelChunk getChunkAtIfLoadedMainThread(int x, int z, OffsetData offset) {
++        int cacheKey = getChunkCacheKey(x, z);
++
++        LevelChunk cachedChunk = this.lastLoadedChunks[cacheKey];
++        if (cachedChunk != null && cachedChunk.locX == x & cachedChunk.locZ == z) {
++            return cachedChunk;
++        }
++
++        long chunkKey = ChunkPos.asLong(x, z);
++
++        cachedChunk = this.loadedChunkMap.get(chunkKey);
++        // Skipping a null check to avoid extra instructions to improve inline capability
++        this.lastLoadedChunks[cacheKey] = cachedChunk;
++        return cachedChunk;
++    }
++
++    public final LevelChunk getChunkAtIfLoadedMainThreadNoCache(int x, int z, OffsetData offset) {
++        return this.loadedChunkMap.get(ChunkPos.asLong(x, z));
++    }
++
++    @Nullable
++    public ChunkAccess getChunkAtImmediately(int x, int z, OffsetData offset) {
++        ChunkHolder holder = this.chunkMap.getVisibleChunkIfPresent(ChunkPos.asLong(x, z));
++        if (holder == null) {
++            return null;
++        }
++
++        return holder.getLastAvailable();
++    }
++
++    public <T> void addTicketAtLevel(TicketType<T> ticketType, ChunkPos chunkPos, int ticketLevel, T identifier) {
++        this.distanceManager.addTicket(ticketType, chunkPos, ticketLevel, identifier);
++    }
++
++    public <T> void removeTicketAtLevel(TicketType<T> ticketType, ChunkPos chunkPos, int ticketLevel, T identifier) {
++        this.distanceManager.removeTicket(ticketType, chunkPos, ticketLevel, identifier);
++    }
++
++    // "real" get chunk if loaded
++    // Note: Partially copied from the getChunkAt method below
++    @Nullable
++    public LevelChunk getChunkAtIfCachedImmediately(int x, int z, OffsetData offset) {
++        long k = ChunkPos.asLong(x, z);
++
++        // Note: Bypass cache since we need to check ticket level, and to make this MT-Safe
++
++        ChunkHolder playerChunk = this.getVisibleChunkIfPresent(k);
++        if (playerChunk == null) {
++            return null;
++        }
++
++        return playerChunk.getFullChunkNowUnchecked();
++    }
++
++    @Nullable
++    public LevelChunk getChunkAtIfLoadedImmediately(int x, int z, OffsetData offset) {
++        long k = ChunkPos.asLong(x, z);
++
++        if (io.papermc.paper.util.TickThread.isTickThread()) { // Paper - rewrite chunk system
++            return this.getChunkAtIfLoadedMainThread(x, z, offset);
++        }
++
++        LevelChunk ret = null;
++        long readlock;
++        do {
++            readlock = this.loadedChunkMapSeqLock.acquireRead();
++            try {
++                ret = this.loadedChunkMap.get(k);
++            } catch (Throwable thr) {
++                if (thr instanceof ThreadDeath) {
++                    throw (ThreadDeath)thr;
++                }
++                // re-try, this means a CME occurred...
++                continue;
++            }
++        } while (!this.loadedChunkMapSeqLock.tryReleaseRead(readlock));
++
++        return ret;
++    }
++    // Paper end
++
++    @Override
++    public ThreadedLevelLightEngine getLightEngine() {
++        return this.lightEngine;
++    }
++
++    @Nullable
++    private ChunkHolder getVisibleChunkIfPresent(long pos, OffsetData offset) {
++        return this.chunkMap.getVisibleChunkIfPresent(pos);
++    }
++
++    public int getTickingGenerated() {
++        return this.chunkMap.getTickingGenerated();
++    }
++
++    private void storeInCache(long pos, @Nullable ChunkAccess chunk, ChunkStatus status) {
++        for (int j = 3; j > 0; --j) {
++            this.lastChunkPos[j] = this.lastChunkPos[j - 1];
++            this.lastChunkStatus[j] = this.lastChunkStatus[j - 1];
++            this.lastChunk[j] = this.lastChunk[j - 1];
++        }
++
++        this.lastChunkPos[0] = pos;
++        this.lastChunkStatus[0] = status;
++        this.lastChunk[0] = chunk;
++    }
++
++    @Nullable
++    @Override
++    public ChunkAccess getChunk(int x, int z, ChunkStatus leastStatus, boolean create, OffsetData offset) {
++        final int x1 = x; final int z1 = z; // Paper - conflict on variable change
++        if (!io.papermc.paper.util.TickThread.isTickThread()) { // Paper - rewrite chunk system
++            return (ChunkAccess) CompletableFuture.supplyAsync(() -> {
++                return this.getChunk(x, z, leastStatus, create, offset);
++            }, this.mainThreadProcessor).join();
++        } else {
++            // Paper start - Perf: Optimise getChunkAt calls for loaded chunks
++            LevelChunk ifLoaded = this.getChunkAtIfLoadedMainThread(x, z, offset);
++            if (ifLoaded != null) {
++                return ifLoaded;
++            }
++            // Paper end - Perf: Optimise getChunkAt calls for loaded chunks
++            ProfilerFiller gameprofilerfiller = this.level.getProfiler();
++
++            gameprofilerfiller.incrementCounter("getChunk");
++            long k = ChunkPos.asLong(x, z);
++
++            // Paper - rewrite chunk system - there are no correct callbacks to remove items from cache in the new chunk system
++
++            gameprofilerfiller.incrementCounter("getChunkCacheMiss");
++            CompletableFuture<ChunkResult<ChunkAccess>> completablefuture = this.getChunkFutureMainThread(x, z, leastStatus, create);
++            net.minecraft.server.level.ServerChunkCache.MainThreadExecutor chunkproviderserver_b = this.mainThreadProcessor;
++
++            Objects.requireNonNull(completablefuture);
++            if (!completablefuture.isDone()) { // Paper
++                io.papermc.paper.chunk.system.scheduling.ChunkTaskScheduler.pushChunkWait(this.level, x1, z1); // Paper - rewrite chunk system
++                com.destroystokyo.paper.io.SyncLoadFinder.logSyncLoad(this.level, x, z); // Paper - Add debug for sync chunk loads
++                this.level.timings.syncChunkLoad.startTiming(); // Paper
++                chunkproviderserver_b.managedBlock(completablefuture::isDone);
++                io.papermc.paper.chunk.system.scheduling.ChunkTaskScheduler.popChunkWait(); // Paper - rewrite chunk system
++                this.level.timings.syncChunkLoad.stopTiming(); // Paper
++            } // Paper
++            ChunkResult<ChunkAccess> chunkresult = (ChunkResult) completablefuture.join();
++            ChunkAccess ichunkaccess1 = (ChunkAccess) chunkresult.orElse(null); // CraftBukkit - decompile error
++
++            if (ichunkaccess1 == null && create) {
++                throw (IllegalStateException) Util.pauseInIde(new IllegalStateException("Chunk not there when requested: " + chunkresult.getError()));
++            } else {
++                this.storeInCache(k, ichunkaccess1, leastStatus);
++                return ichunkaccess1;
++            }
++        }
++    }
++
++    @Nullable
++    @Override
++    public LevelChunk getChunkNow(int chunkX, int chunkZ, OffsetData offset) {
++        if (!io.papermc.paper.util.TickThread.isTickThread()) { // Paper - rewrite chunk system
++            return null;
++        } else {
++            return this.getChunkAtIfLoadedMainThread(chunkX, chunkZ, offset); // Paper - Perf: Optimise getChunkAt calls for loaded chunks
++        }
++    }
++
++    private void clearCache() {
++        Arrays.fill(this.lastChunkPos, ChunkPos.INVALID_CHUNK_POS);
++        Arrays.fill(this.lastChunkStatus, (Object) null);
++        Arrays.fill(this.lastChunk, (Object) null);
++    }
++
++    public CompletableFuture<ChunkResult<ChunkAccess>> getChunkFuture(int chunkX, int chunkZ, ChunkStatus leastStatus, boolean create, OffsetData offset) {
++        boolean flag1 = io.papermc.paper.util.TickThread.isTickThread(); // Paper - rewrite chunk system
++        CompletableFuture completablefuture;
++
++        if (flag1) {
++            completablefuture = this.getChunkFutureMainThread(chunkX, chunkZ, leastStatus, create, offset);
++            net.minecraft.server.level.ServerChunkCache.MainThreadExecutor chunkproviderserver_b = this.mainThreadProcessor;
++
++            Objects.requireNonNull(completablefuture);
++            chunkproviderserver_b.managedBlock(completablefuture::isDone);
++        } else {
++            completablefuture = CompletableFuture.supplyAsync(() -> {
++                return this.getChunkFutureMainThread(chunkX, chunkZ, leastStatus, create, offset);
++            }, this.mainThreadProcessor).thenCompose((completablefuture1) -> {
++                return completablefuture1;
++            });
++        }
++
++        return completablefuture;
++    }
++
++
++    private CompletableFuture<ChunkResult<ChunkAccess>> getChunkFutureMainThread(int chunkX, int chunkZ, ChunkStatus leastStatus, boolean create, OffsetData offset) {
++        // Paper start - add isUrgent - old sig left in place for dirty nms plugins
++        return getChunkFutureMainThread(chunkX, chunkZ, leastStatus, create, false, offset);
++    }
++    private CompletableFuture<ChunkResult<ChunkAccess>> getChunkFutureMainThread(int chunkX, int chunkZ, ChunkStatus leastStatus, boolean create, boolean isUrgent, OffsetData offset) {
++        // Paper start - rewrite chunk system
++        io.papermc.paper.util.TickThread.ensureTickThread(this.level, chunkX, chunkZ, "Scheduling chunk load off-main");
++        int minLevel = ChunkLevel.byStatus(leastStatus);
++        io.papermc.paper.chunk.system.scheduling.NewChunkHolder chunkHolder = this.level.chunkTaskScheduler.chunkHolderManager.getChunkHolder(chunkX, chunkZ);
++
++        boolean needsFullScheduling = leastStatus == ChunkStatus.FULL && (chunkHolder == null || !chunkHolder.getChunkStatus().isOrAfter(FullChunkStatus.FULL));
++
++        if ((chunkHolder == null || chunkHolder.getTicketLevel() > minLevel || needsFullScheduling) && !create) {
++            return ChunkHolder.UNLOADED_CHUNK_FUTURE;
++        }
++
++        io.papermc.paper.chunk.system.scheduling.NewChunkHolder.ChunkCompletion chunkCompletion = chunkHolder == null ? null : chunkHolder.getLastChunkCompletion();
++        if (needsFullScheduling || chunkCompletion == null || !chunkCompletion.genStatus().isOrAfter(leastStatus)) {
++            // schedule
++            CompletableFuture<ChunkResult<ChunkAccess>> ret = new CompletableFuture<>();
++            Consumer<ChunkAccess> complete = (ChunkAccess chunk) -> {
++                if (chunk == null) {
++                    ret.complete(ChunkResult.error("Unexpected chunk unload"));
++                } else {
++                    ret.complete(ChunkResult.of(chunk));
++                }
++            };
++
++            this.level.chunkTaskScheduler.scheduleChunkLoad(
++                    chunkX, chunkZ, leastStatus, true,
++                    isUrgent ? ca.spottedleaf.concurrentutil.executor.standard.PrioritisedExecutor.Priority.BLOCKING : ca.spottedleaf.concurrentutil.executor.standard.PrioritisedExecutor.Priority.NORMAL,
++                    complete
++            );
++
++            return ret;
++        } else {
++            // can return now
++            return CompletableFuture.completedFuture(ChunkResult.of(chunkCompletion.chunk()));
++        }
++        // Paper end - rewrite chunk system
++    }
++
++    // Paper - rewrite chunk system
++
++    @Override
++    public boolean hasChunk(int x, int z, OffsetData offset) {
++        return this.getChunkAtIfLoadedImmediately(x, z, offset) != null; // Paper - rewrite chunk system
++    }
++
++    @Nullable
++    @Override
++    public LightChunk getChunkForLighting(int chunkX, int chunkZ, OffsetData offset) {
++        long k = ChunkPos.asLong(chunkX, chunkZ);
++        ChunkHolder playerchunk = this.getVisibleChunkIfPresent(k, offset);
++
++        if (playerchunk == null) {
++            return null;
++        } else {
++            // Paper start - rewrite chunk system
++            ChunkStatus status = playerchunk.getChunkHolderStatus();
++            if (status != null && !status.isOrAfter(ChunkStatus.LIGHT.getParent())) {
++                return null;
++            }
++            return playerchunk.getAvailableChunkNow();
++            // Paper end - rewrite chunk system
++        }
++    }
++
++    @Override
++    public Level getLevel() {
++        return this.level;
++    }
++
++    public boolean pollTask() {
++        return this.mainThreadProcessor.pollTask();
++    }
++
++    public boolean runDistanceManagerUpdates() { // Paper - public
++        return this.level.chunkTaskScheduler.chunkHolderManager.processTicketUpdates(); // Paper - rewrite chunk system
++    }
++
++    // Paper start
++    public boolean isPositionTicking(Entity entity) {
++        return this.isPositionTicking(ChunkPos.asLong(net.minecraft.util.Mth.floor(entity.getX()) >> 4, net.minecraft.util.Mth.floor(entity.getZ()) >> 4));
++    }
++    // Paper end
++
++    public boolean isPositionTicking(long pos) {
++        // Paper start - replace player chunk loader system
++        ChunkHolder holder = this.chunkMap.getVisibleChunkIfPresent(pos);
++        return holder != null && holder.isTickingReady();
++        // Paper end - replace player chunk loader system
++    }
++
++    public void save(boolean flush) {
++        this.runDistanceManagerUpdates();
++        try (co.aikar.timings.Timing timed = level.timings.chunkSaveData.startTiming()) { // Paper - Timings
++            this.chunkMap.saveAllChunks(flush);
++        } // Paper - Timings
++    }
++
++    // Paper start - Incremental chunk and player saving; duplicate save, but call incremental
++    public void saveIncrementally() {
++        this.runDistanceManagerUpdates();
++        try (co.aikar.timings.Timing timed = level.timings.chunkSaveData.startTiming()) { // Paper - Timings
++            this.chunkMap.saveIncrementally();
++        } // Paper - Timings
++    }
++    // Paper end - Incremental chunk and player saving
++
++    @Override
++    public void close() throws IOException {
++        // CraftBukkit start
++        this.close(true);
++    }
++
++    public void close(boolean save) { // Paper - rewrite chunk system
++        this.level.chunkTaskScheduler.chunkHolderManager.close(save, true); // Paper - rewrite chunk system
++        // Paper start - Write SavedData IO async
++        try {
++            this.dataStorage.close();
++        } catch (IOException exception) {
++            LOGGER.error("Failed to close persistent world data", exception);
++        }
++        // Paper end - Write SavedData IO async
++    }
++
++    // CraftBukkit start - modelled on below
++    public void purgeUnload() {
++        if (true) return; // Paper - tickets will be removed later, this behavior isn't really well accounted for by the chunk system
++        this.level.getProfiler().push("purge");
++        this.distanceManager.purgeStaleTickets();
++        this.runDistanceManagerUpdates();
++        this.level.getProfiler().popPush("unload");
++        this.chunkMap.tick(() -> true);
++        this.level.getProfiler().pop();
++        this.clearCache();
++    }
++    // CraftBukkit end
++
++    @Override
++    public void tick(BooleanSupplier shouldKeepTicking, boolean tickChunks, OffsetData offset) {
++        this.level.getProfiler().push("purge");
++        this.level.timings.doChunkMap.startTiming(); // Spigot
++        if (this.level.tickRateManager().runsNormally() || !tickChunks || this.level.spigotConfig.unloadFrozenChunks) { // Spigot
++            this.distanceManager.purgeStaleTickets();
++        }
++
++        this.runDistanceManagerUpdates();
++        this.level.timings.doChunkMap.stopTiming(); // Spigot
++        this.level.getProfiler().popPush("chunks");
++        if (tickChunks) {
++            this.level.timings.chunks.startTiming(); // Paper - timings
++            this.chunkMap.level.playerChunkLoader.tick(); // Paper - replace player chunk loader - this is mostly required to account for view distance changes
++            this.tickChunks();
++            this.level.timings.chunks.stopTiming(); // Paper - timings
++            this.chunkMap.tick();
++        }
++
++        this.level.timings.doChunkUnload.startTiming(); // Spigot
++        this.level.getProfiler().popPush("unload");
++        this.chunkMap.tick(shouldKeepTicking);
++        this.level.timings.doChunkUnload.stopTiming(); // Spigot
++        this.level.getProfiler().pop();
++        this.clearCache();
++    }
++
++    private void tickChunks(OffsetData offset) {
++        long i = this.level.getGameTime();
++        long j = i - this.lastInhabitedUpdate;
++
++        this.lastInhabitedUpdate = i;
++        if (!this.level.isDebug()) {
++            ProfilerFiller gameprofilerfiller = this.level.getProfiler();
++
++            gameprofilerfiller.push("pollingChunks");
++            gameprofilerfiller.push("filteringLoadedChunks");
++            // Paper - optimise chunk tick iteration
++            if (this.level.getServer().tickRateManager().runsNormally()) this.level.timings.chunkTicks.startTiming(); // Paper
++
++            // Paper - optimise chunk tick iteration
++
++            if (this.level.tickRateManager().runsNormally()) {
++                gameprofilerfiller.popPush("naturalSpawnCount");
++                this.level.timings.countNaturalMobs.startTiming(); // Paper - timings
++                int k = this.distanceManager.getNaturalSpawnChunkCount();
++                // Paper start - Optional per player mob spawns
++                int naturalSpawnChunkCount = k;
++                NaturalSpawner.SpawnState spawnercreature_d; // moved down
++                if ((this.spawnFriendlies || this.spawnEnemies) && this.level.paperConfig().entities.spawning.perPlayerMobSpawns) { // don't count mobs when animals and monsters are disabled
++                    // re-set mob counts
++                    for (ServerPlayer player : this.level.players) {
++                        // Paper start - per player mob spawning backoff
++                        for (int ii = 0; ii < ServerPlayer.MOBCATEGORY_TOTAL_ENUMS; ii++) {
++                            player.mobCounts[ii] = 0;
++
++                            int newBackoff = player.mobBackoffCounts[ii] - 1; // TODO make configurable bleed // TODO use nonlinear algorithm?
++                            if (newBackoff < 0) {
++                                newBackoff = 0;
++                            }
++                            player.mobBackoffCounts[ii] = newBackoff;
++                        }
++                        // Paper end - per player mob spawning backoff
++                    }
++                    spawnercreature_d = NaturalSpawner.createState(naturalSpawnChunkCount, this.level.getAllEntities(), this::getFullChunk, null, true);
++                } else {
++                    spawnercreature_d = NaturalSpawner.createState(naturalSpawnChunkCount, this.level.getAllEntities(), this::getFullChunk, !this.level.paperConfig().entities.spawning.perPlayerMobSpawns ? new LocalMobCapCalculator(this.chunkMap) : null, false);
++                }
++                // Paper end - Optional per player mob spawns
++                this.level.timings.countNaturalMobs.stopTiming(); // Paper - timings
++
++                this.lastSpawnState = spawnercreature_d;
++                gameprofilerfiller.popPush("spawnAndTick");
++                boolean flag = this.level.getGameRules().getBoolean(GameRules.RULE_DOMOBSPAWNING) && !this.level.players().isEmpty(); // CraftBukkit
++
++                // Paper start - optimise chunk tick iteration
++                ChunkMap playerChunkMap = this.chunkMap;
++                for (ServerPlayer player : this.level.players) {
++                    if (!player.affectsSpawning || player.isSpectator()) {
++                        playerChunkMap.playerMobSpawnMap.remove(player);
++                        player.playerNaturallySpawnedEvent = null;
++                        player.lastEntitySpawnRadiusSquared = -1.0;
++                        continue;
++                    }
++
++                    int viewDistance = io.papermc.paper.chunk.system.ChunkSystem.getTickViewDistance(player);
++
++                    // copied and modified from isOutisdeRange
++                    int chunkRange = (int)level.spigotConfig.mobSpawnRange;
++                    chunkRange = (chunkRange > viewDistance) ? viewDistance : chunkRange;
++                    chunkRange = (chunkRange > DistanceManager.MOB_SPAWN_RANGE) ? DistanceManager.MOB_SPAWN_RANGE : chunkRange;
++
++                    com.destroystokyo.paper.event.entity.PlayerNaturallySpawnCreaturesEvent event = new com.destroystokyo.paper.event.entity.PlayerNaturallySpawnCreaturesEvent(player.getBukkitEntity(), (byte)chunkRange);
++                    event.callEvent();
++                    if (event.isCancelled() || event.getSpawnRadius() < 0) {
++                        playerChunkMap.playerMobSpawnMap.remove(player);
++                        player.playerNaturallySpawnedEvent = null;
++                        player.lastEntitySpawnRadiusSquared = -1.0;
++                        continue;
++                    }
++
++                    int range = Math.min(event.getSpawnRadius(), DistanceManager.MOB_SPAWN_RANGE); // limit to max spawn range
++                    int chunkX = io.papermc.paper.util.CoordinateUtils.getChunkCoordinate(player.getX());
++                    int chunkZ = io.papermc.paper.util.CoordinateUtils.getChunkCoordinate(player.getZ());
++
++                    playerChunkMap.playerMobSpawnMap.addOrUpdate(player, chunkX, chunkZ, range);
++                    player.lastEntitySpawnRadiusSquared = (double)((range << 4) * (range << 4)); // used in anyPlayerCloseEnoughForSpawning
++                    player.playerNaturallySpawnedEvent = event;
++                }
++                // Paper end - optimise chunk tick iteration
++                int l = this.level.getGameRules().getInt(GameRules.RULE_RANDOMTICKING);
++                boolean flag1 = this.level.ticksPerSpawnCategory.getLong(org.bukkit.entity.SpawnCategory.ANIMAL) != 0L && this.level.getLevelData().getGameTime() % this.level.ticksPerSpawnCategory.getLong(org.bukkit.entity.SpawnCategory.ANIMAL) == 0L; // CraftBukkit
++                // Paper - optimise chunk tick iteration
++
++                int chunksTicked = 0; // Paper
++                // Paper start - optimise chunk tick iteration
++                io.papermc.paper.util.player.NearbyPlayers nearbyPlayers = this.chunkMap.getNearbyPlayers(); // Paper - optimise chunk tick iteration
++                Iterator<LevelChunk> chunkIterator;
++                if (this.level.paperConfig().entities.spawning.perPlayerMobSpawns) {
++                    chunkIterator = this.tickingChunks.iterator();
++                } else {
++                    chunkIterator = this.tickingChunks.unsafeIterator();
++                    List<LevelChunk> shuffled = Lists.newArrayListWithCapacity(this.tickingChunks.size());
++                    while (chunkIterator.hasNext()) {
++                        shuffled.add(chunkIterator.next());
++                    }
++                    Util.shuffle(shuffled, this.level.random);
++                    chunkIterator = shuffled.iterator();
++                }
++                try {
++                    // Paper end - optimise chunk tick iteration
++                    while (chunkIterator.hasNext()) {
++                        LevelChunk chunk1 = chunkIterator.next();
++                        // Paper end - optimise chunk tick iteration
++                        ChunkPos chunkcoordintpair = chunk1.getPos();
++
++                        // Paper start - optimise chunk tick iteration
++                        com.destroystokyo.paper.util.maplist.ReferenceList<ServerPlayer> playersNearby
++                                = nearbyPlayers.getPlayers(chunkcoordintpair, io.papermc.paper.util.player.NearbyPlayers.NearbyMapType.SPAWN_RANGE);
++                        if (playersNearby == null) {
++                            continue;
++                        }
++                        Object[] rawData = playersNearby.getRawData();
++                        boolean spawn = false;
++                        boolean tick = false;
++                        for (int itr = 0, len = playersNearby.size(); itr < len; ++itr) {
++                            ServerPlayer player = (ServerPlayer)rawData[itr];
++                            if (player.isSpectator()) {
++                                continue;
++                            }
++
++                            double distance = ChunkMap.euclideanDistanceSquared(chunkcoordintpair, player);
++                            spawn |= player.lastEntitySpawnRadiusSquared >= distance;
++                            tick |= ((double)io.papermc.paper.util.player.NearbyPlayers.SPAWN_RANGE_VIEW_DISTANCE_BLOCKS) * ((double)io.papermc.paper.util.player.NearbyPlayers.SPAWN_RANGE_VIEW_DISTANCE_BLOCKS) >= distance;
++                            if (spawn & tick) {
++                                break;
++                            }
++                        }
++                        if (tick && chunk1.chunkStatus.isOrAfter(net.minecraft.server.level.FullChunkStatus.ENTITY_TICKING)) {
++                            // Paper end - optimise chunk tick iteration
++                            chunk1.incrementInhabitedTime(j);
++                            if (spawn && flag && (this.spawnEnemies || this.spawnFriendlies) && this.level.getWorldBorder().isWithinBounds(chunkcoordintpair)) { // Spigot // Paper - optimise chunk tick iteration
++                                NaturalSpawner.spawnForChunk(this.level, chunk1, spawnercreature_d, this.spawnFriendlies, this.spawnEnemies, flag1);
++                            }
++
++                            if (true || this.level.shouldTickBlocksAt(chunkcoordintpair.toLong())) { // Paper - optimise chunk tick iteration
++                                this.level.tickChunk(chunk1, l);
++                                if ((chunksTicked++ & 1) == 0) net.minecraft.server.MinecraftServer.getServer().executeMidTickTasks(); // Paper
++                            }
++                        }
++                    }
++                    // Paper start - optimise chunk tick iteration
++                } finally {
++                    if (chunkIterator instanceof io.papermc.paper.util.maplist.IteratorSafeOrderedReferenceSet.Iterator safeIterator) {
++                        safeIterator.finishedIterating();
++                    }
++                }
++                // Paper end - optimise chunk tick iteration
++                this.level.timings.chunkTicks.stopTiming(); // Paper
++
++                gameprofilerfiller.popPush("customSpawners");
++                if (flag) {
++                    try (co.aikar.timings.Timing ignored = this.level.timings.miscMobSpawning.startTiming()) { // Paper - timings
++                        this.level.tickCustomSpawners(this.spawnEnemies, this.spawnFriendlies);
++                    } // Paper - timings
++                }
++            }
++
++            gameprofilerfiller.popPush("broadcast");
++            // Paper - optimise chunk tick iteration
++            this.level.timings.broadcastChunkUpdates.startTiming(); // Paper - timing
++            // Paper start - optimise chunk tick iteration
++            if (!this.chunkMap.needsChangeBroadcasting.isEmpty()) {
++                it.unimi.dsi.fastutil.objects.ReferenceOpenHashSet<ChunkHolder> copy = this.chunkMap.needsChangeBroadcasting.clone();
++                this.chunkMap.needsChangeBroadcasting.clear();
++                for (ChunkHolder holder : copy) {
++                    holder.broadcastChanges(holder.getFullChunkNowUnchecked()); // LevelChunks are NEVER unloaded
++                    if (holder.needsBroadcastChanges()) {
++                        // I DON'T want to KNOW what DUMB plugins might be doing.
++                        this.chunkMap.needsChangeBroadcasting.add(holder);
++                    }
++                }
++            }
++            // Paper end - optimise chunk tick iteration
++            this.level.timings.broadcastChunkUpdates.stopTiming(); // Paper - timing
++            // Paper - optimise chunk tick iteration
++            gameprofilerfiller.pop();
++            gameprofilerfiller.pop();
++        }
++    }
++
++    private void getFullChunk(long pos, Consumer<LevelChunk> chunkConsumer, OffsetData offset) {
++        ChunkHolder playerchunk = this.getVisibleChunkIfPresent(pos, offset);
++
++        if (playerchunk != null) {
++            // Paper start - rewrite chunk system
++            LevelChunk chunk = playerchunk.getFullChunkNow();
++            if (chunk != null) {
++                chunkConsumer.accept(chunk);
++            }
++            // Paper end - rewrite chunk system
++        }
++
++    }
++
++    @Override
++    public String gatherStats() {
++        return Integer.toString(this.getLoadedChunksCount());
++    }
++
++    @VisibleForTesting
++    public int getPendingTasksCount() {
++        return this.mainThreadProcessor.getPendingTasksCount();
++    }
++
++    public ChunkGenerator getGenerator() {
++        return this.chunkMap.generator();
++    }
++
++    public ChunkGeneratorStructureState getGeneratorState() {
++        return this.chunkMap.generatorState();
++    }
++
++    public RandomState randomState() {
++        return this.chunkMap.randomState();
++    }
++
++    @Override
++    public int getLoadedChunksCount() {
++        return this.chunkMap.size();
++    }
++
++    public void blockChanged(BlockPos pos) {
++        int i = SectionPos.blockToSectionCoord(pos.getX());
++        int j = SectionPos.blockToSectionCoord(pos.getZ());
++        ChunkHolder playerchunk = this.getVisibleChunkIfPresent(ChunkPos.asLong(i, j));
++
++        if (playerchunk != null) {
++            playerchunk.blockChanged(pos);
++        }
++
++    }
++
++    @Override
++    public void onLightUpdate(LightLayer type, SectionPos pos, OffsetData offset) {
++        this.mainThreadProcessor.execute(() -> {
++            ChunkHolder playerchunk = this.getVisibleChunkIfPresent(pos.chunk().toLong(), offset);
++
++            if (playerchunk != null) {
++                playerchunk.sectionLightChanged(type, pos.y());
++            }
++
++        });
++    }
++
++    public <T> void addRegionTicket(TicketType<T> ticketType, ChunkPos pos, int radius, T argument) {
++        this.distanceManager.addRegionTicket(ticketType, pos, radius, argument);
++    }
++
++    public <T> void removeRegionTicket(TicketType<T> ticketType, ChunkPos pos, int radius, T argument) {
++        this.distanceManager.removeRegionTicket(ticketType, pos, radius, argument);
++    }
++
++    @Override
++    public void updateChunkForced(ChunkPos pos, boolean forced) {
++        this.distanceManager.updateChunkForced(pos, forced);
++    }
++
++    public void move(ServerPlayer player) {
++        if (!player.isRemoved()) {
++            this.chunkMap.move(player);
++        }
++
++    }
++
++    public void removeEntity(Entity entity) {
++        this.chunkMap.removeEntity(entity);
++    }
++
++    public void addEntity(Entity entity) {
++        this.chunkMap.addEntity(entity);
++    }
++
++    public void broadcastAndSend(Entity entity, Packet<?> packet) {
++        this.chunkMap.broadcastAndSend(entity, packet);
++    }
++
++    public void broadcast(Entity entity, Packet<?> packet) {
++        this.chunkMap.broadcast(entity, packet);
++    }
++
++    public void setViewDistance(int watchDistance) {
++        this.chunkMap.setServerViewDistance(watchDistance);
++    }
++
++    public void setSimulationDistance(int simulationDistance) {
++        this.distanceManager.updateSimulationDistance(simulationDistance);
++    }
++
++    @Override
++    public void setSpawnSettings(boolean spawnMonsters, boolean spawnAnimals) {
++        this.spawnEnemies = spawnMonsters;
++        this.spawnFriendlies = spawnAnimals;
++    }
++
++    public String getChunkDebugData(ChunkPos pos) {
++        return this.chunkMap.getChunkDebugData(pos);
++    }
++
++    public DimensionDataStorage getDataStorage() {
++        return this.dataStorage;
++    }
++
++    public PoiManager getPoiManager() {
++        return this.chunkMap.getPoiManager();
++    }
++
++    public ChunkScanAccess chunkScanner() {
++        return this.chunkMap.chunkScanner();
++    }
++
++    @Nullable
++    @VisibleForDebug
++    public NaturalSpawner.SpawnState getLastSpawnState() {
++        return this.lastSpawnState;
++    }
++
++    public void removeTicketsOnClosing() {
++        this.distanceManager.removeTicketsOnClosing();
++    }
++
++    public final class MainThreadExecutor extends BlockableEventLoop<Runnable> {
++
++        MainThreadExecutor(final Level world) {
++            super("Chunk source main thread executor for " + String.valueOf(world.dimension().location()));
++        }
++
++        @Override
++        protected Runnable wrapRunnable(Runnable runnable) {
++            return runnable;
++        }
++
++        @Override
++        protected boolean shouldRun(Runnable task) {
++            return true;
++        }
++
++        @Override
++        protected boolean scheduleExecutables() {
++            return true;
++        }
++
++        @Override
++        protected Thread getRunningThread() {
++            return net.minecraft.server.level.ServerChunkCache.this.mainThread;
++        }
++
++        @Override
++        protected void doRunTask(Runnable task) {
++            net.minecraft.server.level.ServerChunkCache.this.level.getProfiler().incrementCounter("runTask");
++            super.doRunTask(task);
++        }
++
++        @Override
++        // CraftBukkit start - process pending Chunk loadCallback() and unloadCallback() after each run task
++        public boolean pollTask() {
++            if (net.minecraft.server.level.ServerChunkCache.this.runDistanceManagerUpdates()) {
++                return true;
++            }
++            return super.pollTask() | net.minecraft.server.level.ServerChunkCache.this.level.chunkTaskScheduler.executeMainThreadTask(); // Paper - rewrite chunk system
++        }
++    }
++
++    private static record ChunkAndHolder(LevelChunk chunk, ChunkHolder holder) {
++
++    }
++}
+diff --git a/src/main/java/net/buildtheearth/cubicpaper/store/RocksDBStorageImpl.java b/src/main/java/net/buildtheearth/cubicpaper/store/RocksDBStorageImpl.java
+index 8d33b3d3dfb7947eabf5a4f4d0249e53afaa6062..3511abe551bf5e4c0a9906d39a03c82251664c5e 100644
+--- a/src/main/java/net/buildtheearth/cubicpaper/store/RocksDBStorageImpl.java
++++ b/src/main/java/net/buildtheearth/cubicpaper/store/RocksDBStorageImpl.java
+@@ -1,30 +1,195 @@
+ package net.buildtheearth.cubicpaper.store;
++import dev.sushrut.configuration.BTEConfig;
++import dev.sushrut.util.PositionSerializationUtils;
++import io.netty.buffer.ByteBuf;
++import net.buildtheearth.cubicpaper.util.NBTCompression;
+ import net.minecraft.nbt.CompoundTag;
+-import org.rocksdb.RocksDB;
+-import org.rocksdb.RocksDBException;
+-import org.rocksdb.Options;
++import net.minecraft.nbt.ListTag;
++import org.bukkit.Bukkit;
++import org.rocksdb.*;
++
++import java.io.File;
++import java.io.IOException;
++import java.nio.ByteBuffer;
++import java.nio.charset.StandardCharsets;
++import java.util.ArrayList;
++import java.util.Arrays;
++import java.util.HashMap;
++import java.util.List;
++import java.util.concurrent.ConcurrentHashMap;
+ 
+ public class RocksDBStorageImpl {
+-    static {
+-        RocksDB.loadLibrary();
+-    }
+ 
+     private static RocksDB db;
+ 
+-    public RocksDBStorageImpl(String path) {
+-        Options options = new Options();
++    private static final List<ColumnFamilyHandle> columnFamilyHandles = new ArrayList<>();
++    //Makes world lookups O(1)
++    private static final ConcurrentHashMap<String, ColumnFamilyHandle> worldHandles = new ConcurrentHashMap<>();
++
++    private static final DBOptions options = new DBOptions();
++
++    //The reason that these are defined once is to we can easily free the memory even if the options are being used for an async op, we will just free these at shutdown
++    private static final FlushOptions ASYNC_FLUSH_OPTS = new FlushOptions().setWaitForFlush(false);
++    private static final FlushOptions SYNC_FLUSH_OPTS = new FlushOptions().setWaitForFlush(true);
++
++    //Again this is for GC reasons
++    private static final ColumnFamilyOptions COLUMN_FAMILY_OPTS = new ColumnFamilyOptions().optimizeUniversalStyleCompaction();
++
++    public static void initDb(File optionsFile) {
++        Bukkit.getLogger().info("[RocksDB] Loading database");
++        RocksDB.loadLibrary();
++
++        BTEConfig.init(optionsFile);
++
+         options.setCreateIfMissing(true);
+         options.setCreateMissingColumnFamilies(true);
+         try {
+-            db = RocksDB.open(options, path);
++            final ArrayList<ColumnFamilyDescriptor>  cfDescriptors = new ArrayList<>(Arrays.asList(
++                    new ColumnFamilyDescriptor(RocksDB.DEFAULT_COLUMN_FAMILY, COLUMN_FAMILY_OPTS)
++            ));
++
++            for (String world: BTEConfig.enabledWorlds) {
++                //All column family descriptors will be in ASCII for sanity sake
++                byte[] byteName = world.getBytes(StandardCharsets.US_ASCII);
++                //Add the column family itself
++                cfDescriptors.add(new ColumnFamilyDescriptor(byteName, COLUMN_FAMILY_OPTS));
++            }
++
++
++            db = RocksDB.open(options, BTEConfig.dbPath.toString(), cfDescriptors, columnFamilyHandles);
++
++            //Add handles to the world lookup table
++            for (ColumnFamilyHandle handle: columnFamilyHandles) {
++                //Do some charbuffer stuff to get as ASCII string
++                worldHandles.put(StandardCharsets.US_ASCII.decode(ByteBuffer.wrap(handle.getName())).toString(), handle);
++            }
+         } catch (RocksDBException e) {
+             throw new RuntimeException(e);
+         }
++
++        Bukkit.getLogger().info("[RocksDB] Database Loaded!");
+     }
+ 
+-    public void putCube(int x, int z, CompoundTag tag) {
+ 
++
++    //!!!! IMPORTANT !!!!//
++    // IF YOU FORGET TO CALL THIS, DB IS TOAST
++    // CALL THIS
++    // PLEASE
++    //!!! IMPORTANT !!!!//
++    //The java GC basically does nothing to free the rocksdb memory, so thats our job now
++    public static void closeDB() throws RocksDBException {
++
++        Bukkit.getLogger().info("[RocksDB] Closing database");
++
++        for (final ColumnFamilyHandle handle: columnFamilyHandles) {
++            handle.close();
++        }
++
++        options.close();
++        db.close();
++
++        //Close our options objects
++        ASYNC_FLUSH_OPTS.close();
++        SYNC_FLUSH_OPTS.close();
++        COLUMN_FAMILY_OPTS.close();
++        Bukkit.getLogger().info("[RocksDB] Database closed!");
++    }
++
++    public static void save(boolean async) throws RocksDBException {
++        //Async saving if possible
++        db.flush(async? ASYNC_FLUSH_OPTS: SYNC_FLUSH_OPTS);
++        db.flushWal(!async);
+     }
++    public static boolean worldExists(String name) {
++        return worldHandles.contains(name);
++    }
++
++    public static void createWorld(String name) throws RocksDBException {
++        //All column family descriptors will be in ASCII for sanity sake
++        if (worldExists(name)) return;
++
++        byte[] byteName = name.getBytes(StandardCharsets.US_ASCII);
++
++        ColumnFamilyHandle handle = db.createColumnFamily(new ColumnFamilyDescriptor(byteName, COLUMN_FAMILY_OPTS));
++
++        worldHandles.put(name, handle);
++    }
++
++    public static ColumnFamilyHandle getWorldHandle(String world) {
++        return worldHandles.getOrDefault(world, null);
++    }
++
++    public static void saveCubeData(ColumnFamilyHandle worldHandle, int x, int y, int z, CompoundTag tagData) throws IOException, RocksDBException {
++
++        byte[] cubeKey = PositionSerializationUtils.serializeCube(x, z, y);
++
++        ByteBuf compressedTag = NBTCompression.compressTag(tagData);
++
++        db.put(worldHandle, cubeKey, compressedTag.array());
++
++        //dealloc time cause this is off heap with sun.misc.Unsafe
++        compressedTag.release();
++
++    }
++
++    public static void saveColumnData(ColumnFamilyHandle worldHandle, int x, int z, CompoundTag tagData) throws IOException, RocksDBException {
++
++        byte[] cubeKey = PositionSerializationUtils.serializeChunk(x, z);
++
++        ByteBuf compressedTag = NBTCompression.compressTag(tagData);
++
++        db.put(worldHandle, cubeKey, compressedTag.array());
++
++        //dealloc time cause this is off heap with sun.misc.Unsafe
++        compressedTag.release();
++    }
++
++    public static void saveMiscData(ColumnFamilyHandle worldHandle, String fileName, CompoundTag tagData) throws IOException, RocksDBException {
++
++        byte[] key = fileName.getBytes(StandardCharsets.UTF_8);
++
++        ByteBuf compressedTag = NBTCompression.compressTag(tagData);
++
++        db.put(worldHandle, key, compressedTag.array());
++
++        //dealloc time cause this is off heap with sun.misc.Unsafe
++        compressedTag.release();
++    }
++
++    public static CompoundTag getMiscData(ColumnFamilyHandle worldHandle, String fileName) {
++
++        byte[] key = fileName.getBytes(StandardCharsets.UTF_8);
++
++        //ByteBuf compressedTag = db.get
++
++    }
++
++    //By this point the data should already be offsetted
++    public static void saveChunkDataWhole(ColumnFamilyHandle worldHandle, int x, int z, int startY, CompoundTag tagData) {
++        ListTag sectionsList = tagData.getList("sections", 10);
++        for (int j = 0; j < sectionsList.size(); ++j) {
++            CompoundTag sectionData = sectionsList.getCompound(j);
++
++            int height = startY + j;
++
++            sectionData.putInt("trueY", height);
++
++
++            //TODO: Figure out batch operations
++        }
++
++        //Make sure we don't store again
++        tagData.remove("sections");
++
++        //TODO: Actually impl batch operation for saving
++    }
++
++    //TODO: Methods to save the whole chunk with batch operations, which would be much much  s p e e d
++
++
++
++
+ 
+ 
+ 
+diff --git a/src/main/java/net/buildtheearth/cubicpaper/util/NBTCompression.java b/src/main/java/net/buildtheearth/cubicpaper/util/NBTCompression.java
+index 2e84775e0cece991d974964b13adfa09951ec1b3..d07628a4d4c7249eafed9a85949046b2c0a678df 100644
+--- a/src/main/java/net/buildtheearth/cubicpaper/util/NBTCompression.java
++++ b/src/main/java/net/buildtheearth/cubicpaper/util/NBTCompression.java
+@@ -38,8 +38,6 @@ public class NBTCompression {
+             src = Unpooled.wrappedBuffer(ByteBuffer.wrap(is.readAllBytes()));
+         }
+ 
+-        CompressedStreamTools.read(src);
+-
+-        return NbtIo.read();
++        return NbtIo.read(new ByteBufInputStream(src));
+     }
+ }
+diff --git a/src/main/java/net/minecraft/server/MinecraftServer.java b/src/main/java/net/minecraft/server/MinecraftServer.java
+index 3751c2a077bd13bac330b93c6efc2a640a17f4f2..54e39e191b501089ed1cec73db91c601a6bc4aa0 100644
+--- a/src/main/java/net/minecraft/server/MinecraftServer.java
++++ b/src/main/java/net/minecraft/server/MinecraftServer.java
+@@ -54,6 +54,8 @@ import java.util.stream.Collectors;
+ import java.util.stream.Stream;
+ import javax.annotation.Nullable;
+ import javax.imageio.ImageIO;
++
++import net.buildtheearth.cubicpaper.store.RocksDBStorageImpl;
+ import net.minecraft.CrashReport;
+ import net.minecraft.ReportedException;
+ import net.minecraft.SharedConstants;
+@@ -144,6 +146,7 @@ import net.minecraft.world.level.levelgen.WorldOptions;
+ import net.minecraft.world.level.levelgen.feature.ConfiguredFeature;
+ import net.minecraft.world.level.levelgen.structure.templatesystem.StructureTemplateManager;
+ import net.minecraft.world.level.storage.WorldData;
++import org.rocksdb.RocksDBException;
+ import org.slf4j.Logger;
+ 
+ // CraftBukkit start
+@@ -911,6 +914,22 @@ public abstract class MinecraftServer extends ReentrantBlockableEventLoop<TickTa
+             MinecraftServer.LOGGER.info("ThreadedAnvilChunkStorage: All dimensions are saved");
+         }
+ 
++        //CubicPaper Start
++        //Save and close the rocksdb database
++        if (close) {
++            //close non async
++            try {
++                RocksDBStorageImpl.save(false);
++                RocksDBStorageImpl.closeDB();
++            } catch (RocksDBException e) {
++                for (int i = 0; i < 10; ++i) {
++                    MinecraftServer.LOGGER.info("CubicPaperRocksDB: CRITICAL ERROR, DB NOT SAVED, DO NOT SHUT DOWN YOUR SERVER");
++                }
++                throw new RuntimeException(e);
++            }
++        }
++        //CubicPaper End
++
+         return flag3;
+     }
+ 
+diff --git a/src/main/java/net/minecraft/server/dedicated/DedicatedServer.java b/src/main/java/net/minecraft/server/dedicated/DedicatedServer.java
+index ad967cc2283f902c76e48a59d59cf0dbdacbb5e3..8a96c1a402885d9c3f134f8722b391296bb13b5b 100644
+--- a/src/main/java/net/minecraft/server/dedicated/DedicatedServer.java
++++ b/src/main/java/net/minecraft/server/dedicated/DedicatedServer.java
+@@ -19,6 +19,8 @@ import java.util.Locale;
+ import java.util.Optional;
+ import java.util.function.BooleanSupplier;
+ import javax.annotation.Nullable;
++
++import net.buildtheearth.cubicpaper.store.RocksDBStorageImpl;
+ import net.minecraft.DefaultUncaughtExceptionHandler;
+ import net.minecraft.DefaultUncaughtExceptionHandlerWithName;
+ import net.minecraft.SharedConstants;
+@@ -216,6 +218,11 @@ public class DedicatedServer extends MinecraftServer implements ServerInterface
+         this.setPlayerList(new DedicatedPlayerList(this, this.registries(), this.playerDataStorage));
+         org.spigotmc.SpigotConfig.init((java.io.File) this.options.valueOf("spigot-settings"));
+         org.spigotmc.SpigotConfig.registerCommands();
++
++        //CubicPaper start
++        RocksDBStorageImpl.initDb((java.io.File) this.options.valueOf("bte-settings"));
++        //CubicPaper End
++
+         // Spigot end
+         io.papermc.paper.util.ObfHelper.INSTANCE.getClass(); // Paper - load mappings for stacktrace deobf and etc.
+         // Paper start - initialize global and world-defaults configuration
+diff --git a/src/main/java/net/minecraft/server/level/ServerChunkCache.java b/src/main/java/net/minecraft/server/level/ServerChunkCache.java
+index fcecfda569d2a8d6b8a7e228831f822fb7327748..8adae6141e73f34881d5ea09bdba61e06a0ac189 100644
+--- a/src/main/java/net/minecraft/server/level/ServerChunkCache.java
++++ b/src/main/java/net/minecraft/server/level/ServerChunkCache.java
+@@ -15,6 +15,8 @@ import java.util.function.BooleanSupplier;
+ import java.util.function.Consumer;
+ import java.util.function.Supplier;
+ import javax.annotation.Nullable;
++
++import net.buildtheearth.cubicpaper.OffsetData;
+ import net.minecraft.Util;
+ import net.minecraft.core.BlockPos;
+ import net.minecraft.core.SectionPos;
+@@ -104,7 +106,7 @@ public class ServerChunkCache extends ChunkSource {
+         return x & 3 | ((z & 3) << 2);
+     }
+ 
+-    public void addLoadedChunk(LevelChunk chunk) {
++    public void addLoadedChunk(LevelChunk chunk, OffsetData offset) {
+         this.loadedChunkMapSeqLock.acquireWrite();
+         try {
+             this.loadedChunkMap.put(chunk.coordinateKey, chunk);
+@@ -119,7 +121,7 @@ public class ServerChunkCache extends ChunkSource {
+         this.lastLoadedChunks[cacheKey] = chunk;
+     }
+ 
+-    public void removeLoadedChunk(LevelChunk chunk) {
++    public void removeLoadedChunk(LevelChunk chunk, OffsetData offset) {
+         this.loadedChunkMapSeqLock.acquireWrite();
+         try {
+             this.loadedChunkMap.remove(chunk.coordinateKey);
+@@ -137,7 +139,7 @@ public class ServerChunkCache extends ChunkSource {
+         }
+     }
+ 
+-    public final LevelChunk getChunkAtIfLoadedMainThread(int x, int z) {
++    public final LevelChunk getChunkAtIfLoadedMainThread(int x, int z, OffsetData offset) {
+         int cacheKey = getChunkCacheKey(x, z);
+ 
+         LevelChunk cachedChunk = this.lastLoadedChunks[cacheKey];
+@@ -153,12 +155,12 @@ public class ServerChunkCache extends ChunkSource {
+         return cachedChunk;
+     }
+ 
+-    public final LevelChunk getChunkAtIfLoadedMainThreadNoCache(int x, int z) {
++    public final LevelChunk getChunkAtIfLoadedMainThreadNoCache(int x, int z, OffsetData offset) {
+         return this.loadedChunkMap.get(ChunkPos.asLong(x, z));
+     }
+ 
+     @Nullable
+-    public ChunkAccess getChunkAtImmediately(int x, int z) {
++    public ChunkAccess getChunkAtImmediately(int x, int z, OffsetData offset) {
+         ChunkHolder holder = this.chunkMap.getVisibleChunkIfPresent(ChunkPos.asLong(x, z));
+         if (holder == null) {
+             return null;
+@@ -178,7 +180,7 @@ public class ServerChunkCache extends ChunkSource {
+     // "real" get chunk if loaded
+     // Note: Partially copied from the getChunkAt method below
+     @Nullable
+-    public LevelChunk getChunkAtIfCachedImmediately(int x, int z) {
++    public LevelChunk getChunkAtIfCachedImmediately(int x, int z, OffsetData offset) {
+         long k = ChunkPos.asLong(x, z);
+ 
+         // Note: Bypass cache since we need to check ticket level, and to make this MT-Safe
+@@ -192,11 +194,11 @@ public class ServerChunkCache extends ChunkSource {
+     }
+ 
+     @Nullable
+-    public LevelChunk getChunkAtIfLoadedImmediately(int x, int z) {
++    public LevelChunk getChunkAtIfLoadedImmediately(int x, int z, OffsetData offset) {
+         long k = ChunkPos.asLong(x, z);
+ 
+         if (io.papermc.paper.util.TickThread.isTickThread()) { // Paper - rewrite chunk system
+-            return this.getChunkAtIfLoadedMainThread(x, z);
++            return this.getChunkAtIfLoadedMainThread(x, z, offset);
+         }
+ 
+         LevelChunk ret = null;
+@@ -224,7 +226,7 @@ public class ServerChunkCache extends ChunkSource {
+     }
+ 
+     @Nullable
+-    private ChunkHolder getVisibleChunkIfPresent(long pos) {
++    private ChunkHolder getVisibleChunkIfPresent(long pos, OffsetData offset) {
+         return this.chunkMap.getVisibleChunkIfPresent(pos);
+     }
+ 
+@@ -246,15 +248,15 @@ public class ServerChunkCache extends ChunkSource {
+ 
+     @Nullable
+     @Override
+-    public ChunkAccess getChunk(int x, int z, ChunkStatus leastStatus, boolean create) {
++    public ChunkAccess getChunk(int x, int z, ChunkStatus leastStatus, boolean create, OffsetData offset) {
+         final int x1 = x; final int z1 = z; // Paper - conflict on variable change
+         if (!io.papermc.paper.util.TickThread.isTickThread()) { // Paper - rewrite chunk system
+             return (ChunkAccess) CompletableFuture.supplyAsync(() -> {
+-                return this.getChunk(x, z, leastStatus, create);
++                return this.getChunk(x, z, leastStatus, create, offset);
+             }, this.mainThreadProcessor).join();
+         } else {
+             // Paper start - Perf: Optimise getChunkAt calls for loaded chunks
+-            LevelChunk ifLoaded = this.getChunkAtIfLoadedMainThread(x, z);
++            LevelChunk ifLoaded = this.getChunkAtIfLoadedMainThread(x, z, offset);
+             if (ifLoaded != null) {
+                 return ifLoaded;
+             }
+@@ -293,11 +295,11 @@ public class ServerChunkCache extends ChunkSource {
+ 
+     @Nullable
+     @Override
+-    public LevelChunk getChunkNow(int chunkX, int chunkZ) {
++    public LevelChunk getChunkNow(int chunkX, int chunkZ, OffsetData offset) {
+         if (!io.papermc.paper.util.TickThread.isTickThread()) { // Paper - rewrite chunk system
+             return null;
+         } else {
+-            return this.getChunkAtIfLoadedMainThread(chunkX, chunkZ); // Paper - Perf: Optimise getChunkAt calls for loaded chunks
++            return this.getChunkAtIfLoadedMainThread(chunkX, chunkZ, offset); // Paper - Perf: Optimise getChunkAt calls for loaded chunks
+         }
+     }
+ 
+@@ -307,19 +309,19 @@ public class ServerChunkCache extends ChunkSource {
+         Arrays.fill(this.lastChunk, (Object) null);
+     }
+ 
+-    public CompletableFuture<ChunkResult<ChunkAccess>> getChunkFuture(int chunkX, int chunkZ, ChunkStatus leastStatus, boolean create) {
++    public CompletableFuture<ChunkResult<ChunkAccess>> getChunkFuture(int chunkX, int chunkZ, ChunkStatus leastStatus, boolean create, OffsetData offset) {
+         boolean flag1 = io.papermc.paper.util.TickThread.isTickThread(); // Paper - rewrite chunk system
+         CompletableFuture completablefuture;
+ 
+         if (flag1) {
+-            completablefuture = this.getChunkFutureMainThread(chunkX, chunkZ, leastStatus, create);
++            completablefuture = this.getChunkFutureMainThread(chunkX, chunkZ, leastStatus, create, offset);
+             ServerChunkCache.MainThreadExecutor chunkproviderserver_b = this.mainThreadProcessor;
+ 
+             Objects.requireNonNull(completablefuture);
+             chunkproviderserver_b.managedBlock(completablefuture::isDone);
+         } else {
+             completablefuture = CompletableFuture.supplyAsync(() -> {
+-                return this.getChunkFutureMainThread(chunkX, chunkZ, leastStatus, create);
++                return this.getChunkFutureMainThread(chunkX, chunkZ, leastStatus, create, offset);
+             }, this.mainThreadProcessor).thenCompose((completablefuture1) -> {
+                 return completablefuture1;
+             });
+@@ -329,11 +331,11 @@ public class ServerChunkCache extends ChunkSource {
+     }
+ 
+ 
+-    private CompletableFuture<ChunkResult<ChunkAccess>> getChunkFutureMainThread(int chunkX, int chunkZ, ChunkStatus leastStatus, boolean create) {
++    private CompletableFuture<ChunkResult<ChunkAccess>> getChunkFutureMainThread(int chunkX, int chunkZ, ChunkStatus leastStatus, boolean create, OffsetData offset) {
+         // Paper start - add isUrgent - old sig left in place for dirty nms plugins
+-        return getChunkFutureMainThread(chunkX, chunkZ, leastStatus, create, false);
++        return getChunkFutureMainThread(chunkX, chunkZ, leastStatus, create, false, offset);
+     }
+-    private CompletableFuture<ChunkResult<ChunkAccess>> getChunkFutureMainThread(int chunkX, int chunkZ, ChunkStatus leastStatus, boolean create, boolean isUrgent) {
++    private CompletableFuture<ChunkResult<ChunkAccess>> getChunkFutureMainThread(int chunkX, int chunkZ, ChunkStatus leastStatus, boolean create, boolean isUrgent, OffsetData offset) {
+         // Paper start - rewrite chunk system
+         io.papermc.paper.util.TickThread.ensureTickThread(this.level, chunkX, chunkZ, "Scheduling chunk load off-main");
+         int minLevel = ChunkLevel.byStatus(leastStatus);
+@@ -374,15 +376,15 @@ public class ServerChunkCache extends ChunkSource {
+     // Paper - rewrite chunk system
+ 
+     @Override
+-    public boolean hasChunk(int x, int z) {
+-        return this.getChunkAtIfLoadedImmediately(x, z) != null; // Paper - rewrite chunk system
++    public boolean hasChunk(int x, int z, OffsetData offset) {
++        return this.getChunkAtIfLoadedImmediately(x, z, offset) != null; // Paper - rewrite chunk system
+     }
+ 
+     @Nullable
+     @Override
+-    public LightChunk getChunkForLighting(int chunkX, int chunkZ) {
++    public LightChunk getChunkForLighting(int chunkX, int chunkZ, OffsetData offset) {
+         long k = ChunkPos.asLong(chunkX, chunkZ);
+-        ChunkHolder playerchunk = this.getVisibleChunkIfPresent(k);
++        ChunkHolder playerchunk = this.getVisibleChunkIfPresent(k, offset);
+ 
+         if (playerchunk == null) {
+             return null;
+@@ -470,7 +472,7 @@ public class ServerChunkCache extends ChunkSource {
+     // CraftBukkit end
+ 
+     @Override
+-    public void tick(BooleanSupplier shouldKeepTicking, boolean tickChunks) {
++    public void tick(BooleanSupplier shouldKeepTicking, boolean tickChunks, OffsetData offset) {
+         this.level.getProfiler().push("purge");
+         this.level.timings.doChunkMap.startTiming(); // Spigot
+         if (this.level.tickRateManager().runsNormally() || !tickChunks || this.level.spigotConfig.unloadFrozenChunks) { // Spigot
+@@ -496,7 +498,7 @@ public class ServerChunkCache extends ChunkSource {
+         this.clearCache();
+     }
+ 
+-    private void tickChunks() {
++    private void tickChunks(OffsetData offset) {
+         long i = this.level.getGameTime();
+         long j = i - this.lastInhabitedUpdate;
+ 
+@@ -680,8 +682,8 @@ public class ServerChunkCache extends ChunkSource {
+         }
+     }
+ 
+-    private void getFullChunk(long pos, Consumer<LevelChunk> chunkConsumer) {
+-        ChunkHolder playerchunk = this.getVisibleChunkIfPresent(pos);
++    private void getFullChunk(long pos, Consumer<LevelChunk> chunkConsumer, OffsetData offset) {
++        ChunkHolder playerchunk = this.getVisibleChunkIfPresent(pos, offset);
+ 
+         if (playerchunk != null) {
+             // Paper start - rewrite chunk system
+@@ -733,9 +735,9 @@ public class ServerChunkCache extends ChunkSource {
+     }
+ 
+     @Override
+-    public void onLightUpdate(LightLayer type, SectionPos pos) {
++    public void onLightUpdate(LightLayer type, SectionPos pos, OffsetData offset) {
+         this.mainThreadProcessor.execute(() -> {
+-            ChunkHolder playerchunk = this.getVisibleChunkIfPresent(pos.chunk().toLong());
++            ChunkHolder playerchunk = this.getVisibleChunkIfPresent(pos.chunk().toLong(), offset);
+ 
+             if (playerchunk != null) {
+                 playerchunk.sectionLightChanged(type, pos.y());
+diff --git a/src/main/java/net/minecraft/server/network/PlayerChunkSender.java b/src/main/java/net/minecraft/server/network/PlayerChunkSender.java
+index 442bb60eb35002e54dcd6a893aca4a4584a8e017..4bca37d2993470fb9f29f845bb8e19da7638275c 100644
+--- a/src/main/java/net/minecraft/server/network/PlayerChunkSender.java
++++ b/src/main/java/net/minecraft/server/network/PlayerChunkSender.java
+@@ -21,6 +21,8 @@ import net.minecraft.world.level.chunk.LevelChunk;
+ import org.slf4j.Logger;
+ 
+ public class PlayerChunkSender {
++    //CubicPaper
++    //TODO: modify this class or similar in order to spoof chunk sending and stuff to match worlds
+     private static final Logger LOGGER = LogUtils.getLogger();
+     public static final float MIN_CHUNKS_PER_TICK = 0.01F;
+     public static final float MAX_CHUNKS_PER_TICK = 64.0F;
+diff --git a/src/main/java/net/minecraft/world/level/chunk/ChunkSource.java b/src/main/java/net/minecraft/world/level/chunk/ChunkSource.java
+new file mode 100644
+index 0000000000000000000000000000000000000000..d8228fa62c1944be0b711f7e16e7ce1b40401916
+--- /dev/null
++++ b/src/main/java/net/minecraft/world/level/chunk/ChunkSource.java
+@@ -0,0 +1,56 @@
++package net.minecraft.world.level.chunk;
++
++import java.io.IOException;
++import java.util.function.BooleanSupplier;
++import javax.annotation.Nullable;
++
++import net.buildtheearth.cubicpaper.OffsetData;
++import net.minecraft.world.level.ChunkPos;
++import net.minecraft.world.level.chunk.status.ChunkStatus;
++import net.minecraft.world.level.lighting.LevelLightEngine;
++
++//CubicPaper start
++//Deal with offsets
++
++public abstract class ChunkSource implements LightChunkGetter, AutoCloseable {
++    @Nullable
++    public LevelChunk getChunk(int chunkX, int chunkZ, boolean create, OffsetData offset) {
++        return (LevelChunk)this.getChunk(chunkX, chunkZ, ChunkStatus.FULL, create, offset);
++    }
++
++    @Nullable
++    public LevelChunk getChunkNow(int chunkX, int chunkZ, OffsetData offset) {
++        return this.getChunk(chunkX, chunkZ, false, offset);
++    }
++
++    @Nullable
++    @Override
++    public LightChunk getChunkForLighting(int chunkX, int chunkZ, OffsetData offset) {
++        return this.getChunk(chunkX, chunkZ, ChunkStatus.EMPTY, false, offset);
++    }
++
++    public boolean hasChunk(int x, int z, OffsetData offset) {
++        return this.getChunk(x, z, ChunkStatus.FULL, false, offset) != null;
++    }
++
++    @Nullable
++    public abstract ChunkAccess getChunk(int x, int z, ChunkStatus leastStatus, boolean create, OffsetData offset);
++
++    public abstract void tick(BooleanSupplier shouldKeepTicking, boolean tickChunks, OffsetData offset);
++
++    public abstract String gatherStats();
++
++    public abstract int getLoadedChunksCount();
++
++    @Override
++    public void close() throws IOException {
++    }
++
++    public abstract LevelLightEngine getLightEngine();
++
++    public void setSpawnSettings(boolean spawnMonsters, boolean spawnAnimals) {
++    }
++
++    public void updateChunkForced(ChunkPos pos, boolean forced) {
++    }
++}
+diff --git a/src/main/java/net/minecraft/world/level/chunk/storage/ChunkSerializer.java b/src/main/java/net/minecraft/world/level/chunk/storage/ChunkSerializer.java
+index c38b742369b2a8484048e167b739945d2907f286..0a3f05c1f0bbd02aa71febf326e51dbd8c72109d 100644
+--- a/src/main/java/net/minecraft/world/level/chunk/storage/ChunkSerializer.java
++++ b/src/main/java/net/minecraft/world/level/chunk/storage/ChunkSerializer.java
+@@ -18,9 +18,6 @@ import java.util.Objects;
+ import java.util.Optional;
+ import javax.annotation.Nullable;
+ 
+-import net.buildtheearth.cubicpaper.CubeOverlapLevelManager;
+-import net.buildtheearth.cubicpaper.CubeOverlapManager;
+-import net.buildtheearth.cubicpaper.CubicStoreList;
+ import net.buildtheearth.cubicpaper.CubicWorldList;
+ import net.minecraft.core.BlockPos;
+ import net.minecraft.core.Holder;
+@@ -44,7 +41,6 @@ import net.minecraft.server.level.ThreadedLevelLightEngine;
+ import net.minecraft.world.entity.EntityType;
+ import net.minecraft.world.entity.ai.village.poi.PoiManager;
+ import net.minecraft.world.level.ChunkPos;
+-import net.minecraft.world.level.LightLayer;
+ import net.minecraft.world.level.biome.Biome;
+ import net.minecraft.world.level.biome.Biomes;
+ import net.minecraft.world.level.block.Block;
+@@ -53,7 +49,6 @@ import net.minecraft.world.level.block.entity.BlockEntity;
+ import net.minecraft.world.level.block.state.BlockState;
+ import net.minecraft.world.level.chunk.CarvingMask;
+ import net.minecraft.world.level.chunk.ChunkAccess;
+-import net.minecraft.world.level.chunk.DataLayer;
+ import net.minecraft.world.level.chunk.ImposterProtoChunk;
+ import net.minecraft.world.level.chunk.LevelChunk;
+ import net.minecraft.world.level.chunk.LevelChunkSection;
+@@ -187,8 +182,6 @@ public class ChunkSerializer {
+         //CubicPaper begin - check if any part of this chunk is cached
+ 
+         boolean isWorldCubic = CubicWorldList.isWorldCubic(world.serverLevelData.getLevelName());
+-        CubeOverlapLevelManager cubeOverlapManager = isWorldCubic ? CubicStoreList.getCubicStore(world.serverLevelData.getLevelName()) : null;
+-        boolean cubicCached = isWorldCubic && cubeOverlapManager.isChunkLoaded(chunkPos.x, chunkPos.z);
+ 
+         //CubicPaper end
+ 
+@@ -198,29 +191,17 @@ public class ChunkSerializer {
+             //CubicPaper begin
+             // We will be offsetting the chunk section back to vanilla height
+ 
+-            byte b0 = nbttagcompound1.getByte("Y");
++            int b0 = nbttagcompound1.getByte("Y");
+             int k = world.getSectionIndexFromSectionY(b0);
+ 
+             //If its a cubic world, normalize the height again
+             if (isWorldCubic) {
+-                k -= CubicWorldList.getWorldHeightOffset(world.serverLevelData.getLevelName());
++                k = nbttagcompound1.getInt("trueY");
+             }
+             //CubicPaper end
+ 
+             if (k >= 0 && k < achunksection.length) {
+ 
+-                //CubicPaper begin
+-                if (cubicCached) {
+-
+-                    //if it is cached, then we will set the data to be as defined by the caching manager, and continue
+-                    if (cubeOverlapManager.isChunkSectionLoaded(chunkPos.x, chunkPos.z, b0)) {
+-                        achunksection[k] = cubeOverlapManager.getChunkSectionIfLoaded(chunkPos.x, chunkPos.z, k, world.serverLevelData.getLevelName());
+-                        continue;
+-                    }
+-
+-                }
+-
+-                //CubicPaper end
+ 
+                 PalettedContainer datapaletteblock;
+                 // Paper start - Anti-Xray - Add preset block states
+diff --git a/src/main/java/org/bukkit/craftbukkit/Main.java b/src/main/java/org/bukkit/craftbukkit/Main.java
+index b86ba59158964f73abd6622341a9acb98a33fa44..2fb1c27c624d00d4bd3cfeffe4c04efd4bf6481a 100644
+--- a/src/main/java/org/bukkit/craftbukkit/Main.java
++++ b/src/main/java/org/bukkit/craftbukkit/Main.java
+@@ -157,6 +157,8 @@ public class Main {
+                         .describedAs("Yml file");
+                 // Spigot End
+ 
++
++
+                 // Paper start
+                 acceptsAll(asList("paper-dir", "paper-settings-directory"), "Directory for Paper settings")
+                     .withRequiredArg()
+@@ -183,6 +185,14 @@ public class Main {
+                         .defaultsTo("Unknown Server")
+                         .describedAs("Name");
+                 // Paper end
++
++                //CubicPaper Start
++                this.acceptsAll(Main.asList("bte-settings"), "File for cubicpaper settings")
++                        .withRequiredArg()
++                        .ofType(File.class)
++                        .defaultsTo(new File("buildtheearth.yml"))
++                        .describedAs("Yml file");
++                //CubicPaper End
+             }
+         };
+ 
